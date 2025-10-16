@@ -1,11 +1,26 @@
+"use client"
+
+import { GameContainer } from "../src/components/game-container"
+import { GameUI } from "../src/components/game-ui"
+
 export default function Home() {
   return (
-    <div style={{padding: '20px'}}>
-      <h1 style={{color: 'white', fontSize: '24px', marginBottom: '10px'}}>Balance Game - Test Page</h1>
-      <p style={{color: '#ccc', marginBottom: '20px'}}>This is a minimal test to verify Next.js App Router is working.</p>
-      <div style={{color: '#888', fontSize: '14px'}}>
-        If you can see this, the basic Next.js setup is working correctly.
+    <main className="min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#12121a] to-[#1a1a28] flex flex-col items-center justify-center p-8">
+      <div className="flex flex-col items-center gap-8">
+        <header className="text-center">
+          <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Balance — DEMO</h1>
+          <p className="text-sm text-gray-400">click to flip · swipe to discard · one stone per candle</p>
+        </header>
+
+        <div className="relative">
+          <GameContainer />
+          <GameUI />
+        </div>
+
+        <footer className="text-center">
+          <p className="text-sm text-gray-400 italic">data shapes the stones; you shape the stack</p>
+        </footer>
       </div>
-    </div>
+    </main>
   )
 }
