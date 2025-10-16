@@ -1,3 +1,5 @@
+"use client"
+
 import { GameContainer } from "@/components/game-container"
 import { GameUI } from "@/components/game-ui"
 
