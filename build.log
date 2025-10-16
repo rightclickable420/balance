@@ -1,0 +1,41 @@
+
+> my-v0-project@0.1.0 build
+> next build
+
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /Users/ethangill/package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * /Users/ethangill/balance/package-lock.json
+
+   ▲ Next.js 15.5.4
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 498ms
+   Linting and checking validity of types ...
+
+./src/components/game-container.tsx
+50:5  Warning: 'placementProgress' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+146:16  Warning: The ref value 'audioRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'audioRef.current' to a variable inside the effect, and use that variable in the cleanup function.  react-hooks/exhaustive-deps
+158:6  Warning: React Hook useEffect has a missing dependency: 'scheduleNextDrop'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/hooks/use-gesture-controls.ts
+31:66  Warning: 'dx' is defined but never used.  @typescript-eslint/no-unused-vars
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules
+   Collecting page data ...
+   Generating static pages (0/2) ...
+ ✓ Generating static pages (2/2)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (pages)                                Size  First Load JS
+─ ○ /404                                    180 B        82.6 kB
++ First Load JS shared by all             82.4 kB
+  ├ chunks/framework-a6e0b7e30f98059a.js  44.8 kB
+  ├ chunks/main-d9061fffb3b4849d.js         36 kB
+  └ other shared chunks (total)           1.66 kB
+
+○  (Static)  prerendered as static content
+
