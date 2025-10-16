@@ -14,7 +14,7 @@ export function GameUI() {
       </div>
 
       {/* Decision indicator */}
-      {phase === "falling" && (
+      {phase === "placing" && (
         <div
           className={`bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border transition-colors ${
             canDecide ? "border-accent text-accent" : "border-border text-muted-foreground"
