@@ -9,6 +9,7 @@ import { DEFAULT_CONFIG } from "@/lib/config"
 import { useGameState, type Stance } from "@/lib/game/game-state"
 import { initFeatureState, computeFeatures, type Features } from "@/lib/data/features"
 import { featuresToStoneVisual } from "@/lib/game/feature-mapper"
+import { stonesToLose } from "@/lib/game/loss"
 import { AudioManager } from "@/lib/audio/audio-manager"
 import type { Candle, StoneParams } from "@/lib/types"
 import { useGestureControls } from "@/hooks/use-gesture-controls"
@@ -47,6 +48,8 @@ type HoverStone = {
 type PlacingStone = HoverStone & {
   startY: number
 }
+
+const DEFAULT_STANCE: Stance = "long"
 
 export function GameContainer() {
   const engineRef = useRef<PhysicsEngine | null>(null)
@@ -387,9 +390,15 @@ export function GameContainer() {
           const newAlignment = Math.sin(marketAlignmentTimeRef.current * 0.1) * 0.5
           setMarketAlignment(newAlignment)
 
-          if (newAlignment < -0.3 && currentPhase === "stable" && currentStonesPlaced > 5) {
-            console.log("[v0] Market misalignment detected - triggering loss event")
-            triggerLossEvent()
+          if (currentPhase === "stable" && currentStonesPlaced > 0) {
+            const latestFeatures = lastFeaturesRef.current
+            if (latestFeatures) {
+              const pendingStance = placingStoneRef.current?.stance ?? hoverStoneRef.current?.stance ?? DEFAULT_STANCE
+              const loseCount = stonesToLose(latestFeatures, pendingStance, currentStonesPlaced)
+              if (loseCount > 0) {
+                triggerLossEvent(latestFeatures, pendingStance, loseCount)
+              }
+            }
           }
 
           const activeHoverStone = hoverStoneRef.current
@@ -561,7 +570,7 @@ export function GameContainer() {
       bounds,
       baseParams: stoneParams,
       spawnedAt,
-      stance: "long",
+      stance: DEFAULT_STANCE,
       features,
     }
 
@@ -660,8 +669,13 @@ export function GameContainer() {
     prepareHoverStone()
   }
 
-  const triggerLossEvent = () => {
+  const triggerLossEvent = (features: Features, stance: Stance, loseCount: number) => {
     if (!engineRef.current) return
+
+    if (loseCount <= 0) {
+      console.log("[v0] Loss check: no stones to remove")
+      return
+    }
 
     setPhase("loss")
     setPhysicsActive(true)
@@ -669,21 +683,17 @@ export function GameContainer() {
     decisionDeadlineRef.current = null
 
     const allStones = engineRef.current.getStones()
-    const lossFactor = 0.2 // Remove 20% of stones
-    const stonesToRemove = Math.floor(lossFactor * allStones.length)
+    const stonesToRemove = Math.min(loseCount, allStones.length)
 
-    console.log(`[v0] Loss event - removing ${stonesToRemove} stones`)
+    console.log(`[v0] Loss event - removing ${stonesToRemove} stones due to misalignment`)
 
-    // Remove top stones by enabling physics on them
     for (let i = 0; i < stonesToRemove && i < allStones.length; i++) {
       const stone = allStones[i]
-      // Apply upward force to make them tumble
       stone.body.force = { x: (Math.random() - 0.5) * 0.1, y: -0.2 }
     }
 
     audioRef.current.playTumble()
 
-    // After 3 seconds, disable physics and return to stable
     setTimeout(() => {
       setPhysicsActive(false)
       setPhase("stable")
