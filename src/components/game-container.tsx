@@ -164,20 +164,8 @@ export function GameContainer() {
   )
 
   const isDecisionActive = useCallback(() => {
-    const { phase: currentPhase, canDecide: currentCanDecide } = useGameState.getState()
-    if (currentPhase !== "hovering" || !currentCanDecide) {
-      return false
-    }
-    const deadline = decisionDeadlineRef.current
-    if (!deadline) {
-      return false
-    }
-    if (Date.now() >= deadline) {
-      setCanDecide(false)
-      return false
-    }
-    return true
-  }, [setCanDecide])
+    return useGameState.getState().phase === "hovering"
+  }, [])
 
   const syncTowerOffset = useCallback(() => {
     const top = stackTopYRef.current
@@ -360,15 +348,7 @@ export function GameContainer() {
             stonesPlaced: currentStonesPlaced,
             timeScale: currentTimeScale,
             towerOffset: currentTowerOffset,
-            canDecide: currentCanDecide,
           } = useGameState.getState()
-
-          if (currentPhase === "hovering" && currentCanDecide) {
-            const deadline = decisionDeadlineRef.current
-            if (deadline && now >= deadline) {
-              setCanDecide(false)
-            }
-          }
 
           const targetOffset = towerOffsetTargetRef.current
           if (Math.abs(targetOffset - currentTowerOffset) > 0.1) {

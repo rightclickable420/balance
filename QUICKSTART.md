@@ -203,39 +203,93 @@ rm -rf .next
 
 **Project Status**: ✅ **Production Ready** | **Last Updated**: October 2025 | **Version**: 1.0.0
 
-## 🗺️ Roadmap — Market-Synced Hover Stack
+## 🗺️ Roadmap — Balance-First Tower
 
 - [x] **Hover Stone Lifecycle** – preload the next stone as soon as the prior placement settles and keep it suspended until the cadence tick.
 - [x] **Live Shape Modulation** – regenerate hover vertices every ~120 ms from simulated intrahover signals while preserving the landing surface.
 - [x] **Cadence Controller** – maintain fixed drop cadence, pausing for placement/loss and resuming automatically once the tower is stable.
 - [x] **Stack Viewport Management** – pre-seed frozen stones, keep the visible stack height constant, and ease tower scrolling.
-- [x] **Player Decisions** – flip/discard inputs now operate during the decision window and stance (long/short/flat) is stored per stone.
-- [ ] **Feature-Driven Losses** – replace the sine alignment trigger with feature-based severity and wake physics only for the affected stones.
-- [ ] **River Rock Geometry & Palette** – migrate to a smoothed ellipse generator and finalize color tweaks driven by features.
+- [x] **Feature-Driven Losses** – severity now depends on momentum/order signals; physics wakes only for affected stones.
+- [ ] **Persistent Stance Flow** – remove the decision timer so stance (long/short/flat) persists until the player flips or goes flat, and hover stones act as a live preview.
+- [ ] **Facet-Based Geometry** – generate elongated trapezoidal stones that inherit the previous top angle, exposing a clear “fit” face for the current stance and the flipped stance.
+- [ ] **Fit Feedback & Colors** – align highlights, shadows, and hue blends (green ↔ magenta ↔ neutral) with confluence so the best orientation is visually obvious.
+- [ ] **Tower Lean & Tension** – accumulate misalignment into a visible lean with soft audio/visual cues before any tumble, reinforcing the balance metaphor.
+- [ ] **Premium Polish Pass** – refine shadows, glow, and interaction micro-animations once the new flow and geometry land.
 
 > _Next steps_
 
-### Align Stones With Market Features
+1. **Persistent Stance Flow** – refactor the hover loop so cadence drops happen automatically and stance remains until the user flips or swipes to flat. Update UI copy to remove “decision window” language.
+2. **Facet Geometry Prototype** – teach `stone-generator` to build asymmetrical stones with flattened faces derived from the latest features and previous top angle. Store orientation so hover flips rotate the same mesh.
+3. **Fit Visualization** – drive highlights, gap rendering, and color saturation from alignment metrics; make the “correct” stance read at a glance.
+4. **Tower Lean Mechanic** – track cumulative angular error and translate it into a gentle tower tilt that culminates in the existing feature-driven tumble.
+5. **Polish & Audio** – once the above are stable, revisit shaders, particle cues, and sound design to elevate the premium feel.
 
-1. **Feature Extraction** ✅  
-   `src/lib/data/features.ts` now produces bounded signals from candles with shared helpers in `src/lib/game/math.ts`.
-2. **Feature → Visual Mapping** ✅  
-   `src/lib/game/feature-mapper.ts` converts features into visual stone params and HSL-driven color; hover/placement now consume it.
-3. **River-Rock Geometry**  
-   Swap `generateStoneShape` for a `makeRiverRock` helper that builds a smoothed ellipse, biases the base, and applies gentle noise. Reuse it during hover regeneration so live shape changes stay consistent.
-4. **Player Decisions**  
-   During the cadence decision window expose flip/discard (mouse, touch, keyboard). Lock stance after the window, animate descent, and store `stance` alongside stone geometry in the logical stack.
-5. **Loss Severity & Physics Wake**  
-   Implement `stonesToLose(features, stance, stackCount)` to decide how many top stones tumble when the chosen stance disagrees with features. Wake physics only for those stones for ~3 s, then rebuild the logical stack (either from resting bodies or cached geometry) before resuming cadence.
-6. **UI & Feedback**  
-   Update `game-ui.tsx` with a cadence selector (0.5 s → 60 s), stance indicator, and a visual countdown pulse. Let hover sway/bloom react to volatility; trigger tumble SFX and optional visual flash during losses.
-7. **Debug & Art Tweaks**  
-   Keep `L` for fast-forward, add a volatility exaggeration toggle, and render a compact feature strip (momentum/vol/volume/orderImb/regime) for qualitative tuning.
 
-### Acceptance Targets
+Notes:
+Stones are more like elongated rounded trapazoids
 
-- Stones drop one per cadence; hover shape and color reflect feature-driven cues.
-- Player stance decisions persist and feed loss severity.
-- Physics stays idle except during loss events; tumble count matches severity and the stack recenters afterward.
-- River-rock silhouettes read cleanly across cadence speeds.
-- Feature extraction, mapping, and geometry helpers remain modular, pure, and ready for live data feeds.
+🧭 Core Principle
+Instead of “decision windows,” the player always has an active stance (long, short, flat).
+The game flows continuously. Market data shapes the next “stone,” and how that stone visually fits tells the player if they’re aligned or off-side.
+Your stance (long/short/flat) persists until you manually flip it — just like a trader holding or reversing a position. The game becomes a slow, physical visualization of conviction and misalignment.
+⚙️ Visual Logic
+Element	Represents	When it feels “right”	When it feels “wrong”
+Bottom face	Continuation of current position	If your stance agrees with the market trend → the bottom face fits the previous top face like a puzzle	If your stance disagrees → gap or mis-angle appears
+Top face	Flip to opposite position	If your stance disagrees with market → the top face fits the previous top face (visual cue to flip)	If your stance agrees → the top face looks misaligned
+Previous stone’s top	Market’s “ground truth” orientation you are balancing on	Used as geometric reference for next stone’s orientation	–
+Stone color	Market direction and confidence	Phthalo Green = bullish, Magenta = bearish, Grey = unclear (mix)	Directly derived from fused confluence
+Tower tilt	Your cumulative misalignment	Small angular error → gentle lean; persistent mismatch → visible tip and eventual tumble	–
+🔄 Flow Example
+You’re long.
+Market data turns strongly bullish → hover stone’s bottom face matches perfectly with previous top face → green hue → smooth fit.
+✅ Do nothing → your stance stays long.
+Market flips bearish.
+Hover stone’s bottom now misfits; top face (if you flip) aligns perfectly and turns magenta.
+🔁 Tap/flip → you’re now short.
+Market goes uncertain (neutral).
+Hover stone shows both faces nearly flat and greyish. Either stance fits poorly but not disastrously — visual tension encourages going flat (swipe).
+Persistent misfit (you refuse to adjust) →
+Angular error accumulates → tower leans and eventually stones start tumbling (loss event proportional to accumulated misalignment).
+🎨 Implementation Hints
+1. Persistent stance
+Store stance globally in Zustand or similar:
+type Stance = 'long' | 'short' | 'flat';
+Flipping toggles between long/short.
+Swiping sets flat.
+No automatic resets.
+2. Geometry & orientation
+Each candle → new trapezoid stone.
+Compute faceAngle = fused market direction (positive = bullish, negative = bearish).
+When drawn:
+If player is long: stone renders with bottom = +faceAngle, top = –faceAngle.
+If player is short: invert: bottom = –faceAngle, top = +faceAngle.
+If flat: faces slightly flattened toward 0 deg.
+3. Fit visualization
+When spawning the hover stone, compare its bottom face angle to the previous stone’s top face angle:
+alignment = 1 - abs(prevTopAngle - currentBottomAngle) / MAX_ANGLE;
+Use this to:
+Modulate glow/outline thickness (high alignment → stable glow).
+Adjust small “magnetic” snap animation as the player hovers in alignment.
+4. Color blending
+Blend between green and magenta by direction strength:
+// confluence: -1..+1
+const hue = lerp(320, 160, (confluence + 1) / 2); // magenta→green
+const saturation = 0.6 + 0.2 * abs(confluence);
+const lightness = 0.55 + 0.2 * (1 - abs(confluence));
+At confluence ≈ 0 → mid-grey (low clarity).
+At extremes ±1 → saturated directional color.
+5. Continuous misalignment physics
+Maintain a rolling cumulativeError that integrates angular mismatch between stance and data.
+When it crosses thresholds:
+Small → visual lean only.
+Medium → sound tension + micro shake.
+Large → loss event (physics ON for top N stones).
+6. Player feedback loop
+Right side: fits, glows, hums gently.
+Wrong side: gaps, desaturates, leans.
+Flat: stabilizes the tower (auto-re-center slowly).
+🧩 Why this feels intuitive
+It removes timers and gives continuous agency: you’re managing exposure, not reacting to prompts.
+Geometry and color directly express trend strength vs conviction.
+The tower itself becomes a record of discipline — smooth aligned stones = consistent strategy, jagged ledges = hesitation or error.
+New players “feel” balance without ever reading a chart.
