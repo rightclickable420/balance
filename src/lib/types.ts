@@ -15,6 +15,7 @@ export interface StoneParams {
   restitution: number // 0-1, bounciness
   baseBias: number // -1 to 1, which side is flatter
   radius: number // base size in pixels
+  aspect: number // width:height ratio
   seed: number // for deterministic generation
 }
 

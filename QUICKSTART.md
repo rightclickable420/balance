@@ -211,7 +211,7 @@ rm -rf .next
 - [x] **Stack Viewport Management** – pre-seed frozen stones, keep the visible stack height constant, and ease tower scrolling.
 - [x] **Player Decisions** – flip/discard inputs now operate during the decision window and stance (long/short/flat) is stored per stone.
 - [ ] **Feature-Driven Losses** – replace the sine alignment trigger with feature-based severity and wake physics only for the affected stones.
-- [ ] **River Rock Geometry & Palette** – migrate to HSL-driven color/shape generation so hover cues stay consistent with feature signals.
+- [ ] **River Rock Geometry & Palette** – migrate to a smoothed ellipse generator and finalize color tweaks driven by features.
 
 > _Next steps_
 

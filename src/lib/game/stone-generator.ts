@@ -5,57 +5,67 @@ export interface Point {
   y: number
 }
 
-/**
- * Generates irregular polygon vertices from stone parameters
- * Uses seeded RNG for deterministic generation
- * Updated to create flatter, river-rock-like shapes
- */
-export function generateStoneShape(params: StoneParams): Point[] {
-  const { convexity, jaggedness, baseBias, radius, seed } = params
-
-  // Seeded RNG (same as mock candle source)
+const seededRandom = (seed: number) => {
   let state = seed
-  const rng = () => {
+  return () => {
     state = (state + 0x6d2b79f5) | 0
     let t = Math.imul(state ^ (state >>> 15), 1 | state)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
+}
 
-  const vertexCount = Math.floor(6 + (1 - convexity) * 4) // 6-10 vertices
+const smoothStroke = (points: Point[], passes = 2): Point[] => {
+  let current = points
+  for (let p = 0; p < passes; p++) {
+    const next: Point[] = []
+    for (let i = 0; i < current.length; i++) {
+      const a = current[i]
+      const b = current[(i + 1) % current.length]
+      const c = current[(i + 2) % current.length]
 
-  const points: Point[] = []
-  const angleStep = (Math.PI * 2) / vertexCount
+      const ab = { x: a.x + (b.x - a.x) * 0.5, y: a.y + (b.y - a.y) * 0.5 }
+      const bc = { x: b.x + (c.x - b.x) * 0.5, y: b.y + (c.y - b.y) * 0.5 }
 
-  const aspectRatio = 1.8 + rng() * 0.4 // 1.8 to 2.2
-
-  for (let i = 0; i < vertexCount; i++) {
-    const angle = i * angleStep
-
-    // Base radius with variation
-    let r = radius
-
-    const jagVariation = (rng() - 0.5) * jaggedness * radius * 0.15
-    r += jagVariation
-
-    const convexSmoothing = Math.sin(angle * 2) * (1 - convexity) * radius * 0.3
-    r += convexSmoothing
-
-    // Apply base bias (flatten one side)
-    const verticalPos = Math.sin(angle) // -1 (bottom) to 1 (top)
-    if (baseBias > 0 && verticalPos < 0) {
-      r *= 1 - baseBias * 0.3 * Math.abs(verticalPos)
-    } else if (baseBias < 0 && verticalPos > 0) {
-      r *= 1 - Math.abs(baseBias) * 0.3 * verticalPos
+      next.push(ab, bc)
     }
+    current = next
+  }
+  return current
+}
 
-    const x = Math.cos(angle) * r * aspectRatio
-    const y = Math.sin(angle) * r
+/**
+ * Generates a softened river-rock polygon using aspect ratio and stochastic noise.
+ */
+export function generateStoneShape(params: StoneParams): Point[] {
+  const { convexity, jaggedness, baseBias, radius, aspect, seed } = params
+  const rng = seededRandom(seed)
 
-    points.push({ x, y })
+  const basePoints: Point[] = []
+  const segments = 24
+  const biasStrength = 0.18 * Math.abs(baseBias)
+
+  for (let i = 0; i < segments; i++) {
+    const t = (i / segments) * Math.PI * 2
+    const sin = Math.sin(t)
+    const cos = Math.cos(t)
+
+    const flatten = baseBias >= 0 ? Math.min(1, Math.max(0, sin + 1)) : Math.min(1, Math.max(0, -sin + 1))
+    const biasScale = 1 - biasStrength * flatten
+
+    const ovalX = cos * radius * aspect
+    const ovalY = sin * radius
+
+    const noise = (rng() - 0.5) * jaggedness * radius * 0.18
+    const ridge = Math.sin(t * 2) * (1 - convexity) * radius * 0.25
+
+    const scale = biasScale + noise / Math.max(1, radius) + ridge / Math.max(1, radius)
+
+    basePoints.push({ x: ovalX * scale, y: ovalY * scale })
   }
 
-  return points
+  const smoothed = smoothStroke(basePoints, 2)
+  return smoothed
 }
 
 /**

@@ -29,6 +29,7 @@ export const featuresToStoneVisual = (features: Features, seed: number): StoneVi
     jaggedness,
     baseBias,
     radius,
+    aspect: clamp(1.5 + 0.7 * (1 - Math.abs(breadth)), 1.4, 2.4),
     density,
     friction,
     restitution,
