@@ -34,32 +34,47 @@ const smoothStroke = (points: Point[], passes = 2): Point[] => {
   return current
 }
 
+export interface ShapeOptions {
+  facetStrength?: number
+  topFacetStrength?: number
+}
+
 /**
- * Generates a softened river-rock polygon using aspect ratio and stochastic noise.
+ * Generates a softened river-rock polygon using aspect ratio, directional facets, and stochastic noise.
  */
-export function generateStoneShape(params: StoneParams): Point[] {
+export function generateStoneShape(params: StoneParams, options: ShapeOptions = {}): Point[] {
   const { convexity, jaggedness, baseBias, radius, aspect, seed } = params
+  const { facetStrength = 0.35, topFacetStrength = facetStrength * 0.6 } = options
   const rng = seededRandom(seed)
 
   const basePoints: Point[] = []
-  const segments = 24
-  const biasStrength = 0.18 * Math.abs(baseBias)
+  const segments = 26
+  const biasStrength = 0.16 * Math.abs(baseBias)
 
   for (let i = 0; i < segments; i++) {
     const t = (i / segments) * Math.PI * 2
     const sin = Math.sin(t)
     const cos = Math.cos(t)
 
-    const flatten = baseBias >= 0 ? Math.min(1, Math.max(0, sin + 1)) : Math.min(1, Math.max(0, -sin + 1))
-    const biasScale = 1 - biasStrength * flatten
+    const bottomInfluence = Math.max(0, -sin)
+    const topInfluence = Math.max(0, sin)
+    const sideInfluence = Math.abs(cos)
+
+    const biasFlatten = baseBias >= 0 ? bottomInfluence : topInfluence
+    const biasScale = 1 - biasStrength * Math.pow(biasFlatten, 1.5)
+
+    const bottomFacet = 1 - facetStrength * Math.pow(bottomInfluence, 1.4)
+    const topFacet = 1 - topFacetStrength * Math.pow(topInfluence, 1.2)
+    const sideTaper = 1 - 0.1 * (1 - sideInfluence)
 
     const ovalX = cos * radius * aspect
     const ovalY = sin * radius
 
-    const noise = (rng() - 0.5) * jaggedness * radius * 0.18
-    const ridge = Math.sin(t * 2) * (1 - convexity) * radius * 0.25
+    const noise = (rng() - 0.5) * jaggedness * radius * 0.14
+    const ridge = Math.sin(t * 2) * (1 - convexity) * radius * 0.2
 
-    const scale = biasScale + noise / Math.max(1, radius) + ridge / Math.max(1, radius)
+    const baseScale = biasScale * bottomFacet * topFacet * sideTaper
+    const scale = baseScale + noise / Math.max(1, radius) + ridge / Math.max(1, radius)
 
     basePoints.push({ x: ovalX * scale, y: ovalY * scale })
   }

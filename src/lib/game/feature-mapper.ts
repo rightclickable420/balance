@@ -1,10 +1,11 @@
 import type { Features } from "@/lib/data/features"
 import type { StoneParams } from "@/lib/types"
-import { clamp, clamp01, hslToHex } from "./math"
+import { clamp, clamp01, hslToHex, lerp } from "./math"
 
 export interface StoneVisual {
   params: StoneParams
   color: string
+  facetStrength: number
 }
 
 export const featuresToStoneVisual = (features: Features, seed: number): StoneVisual => {
@@ -40,6 +41,7 @@ export const featuresToStoneVisual = (features: Features, seed: number): StoneVi
   const lightness = clamp01(0.8 - 0.3 * volume + 0.08 * (0.5 - regime))
 
   const color = hslToHex((hue + 360) % 360, saturation, lightness)
+  const facetStrength = clamp01(lerp(0.25, 0.75, Math.abs(momentum)) + volatility * 0.2)
 
-  return { params, color }
+  return { params, color, facetStrength }
 }
