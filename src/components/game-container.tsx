@@ -4,11 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { GameCanvas } from "./game-canvas"
 import { PhysicsEngine } from "@/lib/game/physics-engine"
 import { MockCandleSource } from "@/lib/data/mock-candle-source"
-import { candleToStone } from "@/lib/data/candle-mapper"
 import { generateStoneShape, normalizePoints } from "@/lib/game/stone-generator"
-import { getStoneColor } from "@/lib/game/stone-color"
 import { DEFAULT_CONFIG } from "@/lib/config"
 import { useGameState, type Stance } from "@/lib/game/game-state"
+import { initFeatureState, computeFeatures, type Features } from "@/lib/data/features"
+import { featuresToStoneVisual } from "@/lib/game/feature-mapper"
 import { AudioManager } from "@/lib/audio/audio-manager"
 import type { Candle, StoneParams } from "@/lib/types"
 import { useGestureControls } from "@/hooks/use-gesture-controls"
@@ -41,6 +41,7 @@ type HoverStone = {
   baseParams: StoneParams
   spawnedAt: number
   stance: Stance
+  features: Features
 }
 
 type PlacingStone = HoverStone & {
@@ -66,6 +67,8 @@ export function GameContainer() {
   const hoverModulationTimerRef = useRef<number>(0)
   const decisionDeadlineRef = useRef<number | null>(null)
   const decisionDurationRef = useRef<number>(0)
+  const featureStateRef = useRef(initFeatureState())
+  const lastFeaturesRef = useRef<Features | null>(null)
 
   const [renderTrigger, setRenderTrigger] = useState(0)
   const [testCounter, setTestCounter] = useState(0)
@@ -191,6 +194,14 @@ export function GameContainer() {
     return { minY, maxY }
   }, [])
 
+  const computeVisualFromCandle = useCallback((candle: Candle) => {
+    const { features, state } = computeFeatures(featureStateRef.current, candle)
+    featureStateRef.current = state
+    lastFeaturesRef.current = features
+    const { params, color } = featuresToStoneVisual(features, candle.timestamp)
+    return { params, color, features }
+  }, [])
+
   const handleFlip = useCallback(() => {
     const hover = hoverStoneRef.current
     if (!hover) return
@@ -275,10 +286,9 @@ export function GameContainer() {
 
     for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
       const candle = candleSourceRef.current.next()
-      const params = candleToStone(candle)
+      const { params, color } = computeVisualFromCandle(candle)
       const vertices = normalizePoints(generateStoneShape(params))
       const bounds = computeBounds(vertices)
-      const color = getStoneColor(params.seed)
 
       const targetY = surface - bounds.maxY
 
@@ -295,7 +305,7 @@ export function GameContainer() {
 
     useGameState.setState({ stonesPlaced: INITIAL_STACK_COUNT, phase: "stable" })
     syncTowerOffset()
-  }, [computeBounds, syncTowerOffset])
+  }, [computeBounds, computeVisualFromCandle, syncTowerOffset])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -532,10 +542,9 @@ export function GameContainer() {
     const landingSurface = stackSurfaceYRef.current
 
     const candle = candleSourceRef.current.next()
-    const stoneParams = candleToStone(candle)
+    const { params: stoneParams, color, features } = computeVisualFromCandle(candle)
     const vertices = normalizePoints(generateStoneShape(stoneParams))
     const bounds = computeBounds(vertices)
-    const color = getStoneColor(stoneParams.seed)
 
     const targetY = landingSurface - bounds.maxY
     const hoverY = targetY - HOVER_VERTICAL_OFFSET
@@ -553,6 +562,7 @@ export function GameContainer() {
       baseParams: stoneParams,
       spawnedAt,
       stance: "long",
+      features,
     }
 
     const cadence = DEFAULT_CONFIG.dropCadence / timeScale
@@ -575,7 +585,19 @@ export function GameContainer() {
 
     syncTowerOffset()
     armNextDrop()
-  }, [setHoverStone, setPhase, setDropStartTime, setPlacementProgress, syncTowerOffset, armNextDrop, computeBounds, timeScale, setCanDecide, setHoverStance])
+  }, [
+    computeBounds,
+    computeVisualFromCandle,
+    setCanDecide,
+    setDropStartTime,
+    setHoverStance,
+    setHoverStone,
+    setPhase,
+    setPlacementProgress,
+    syncTowerOffset,
+    armNextDrop,
+    timeScale,
+  ])
 
   useEffect(() => {
     if (phase === "hovering") {

@@ -217,10 +217,10 @@ rm -rf .next
 
 ### Align Stones With Market Features
 
-1. **Feature Extraction**  
-   Create `src/lib/data/features.ts` with a lightweight EMA state that outputs bounded signals (momentum, volatility, volume, breadth, order imbalance, regime). Collect helper math (`clamp`, `tanhSafe`, `lerp`) in `src/lib/game/math.ts` so hover modulation and mapping share utilities.
-2. **Feature → Visual Mapping**  
-   Introduce `src/lib/game/feature-mapper.ts` that converts `Features` into stone visuals (convexity, jaggedness, radius, aspect, baseBias, HSL color). Replace `candleToStone` once hover and placement both consume the mapper.
+1. **Feature Extraction** ✅  
+   `src/lib/data/features.ts` now produces bounded signals from candles with shared helpers in `src/lib/game/math.ts`.
+2. **Feature → Visual Mapping** ✅  
+   `src/lib/game/feature-mapper.ts` converts features into visual stone params and HSL-driven color; hover/placement now consume it.
 3. **River-Rock Geometry**  
    Swap `generateStoneShape` for a `makeRiverRock` helper that builds a smoothed ellipse, biases the base, and applies gentle noise. Reuse it during hover regeneration so live shape changes stay consistent.
 4. **Player Decisions**  
