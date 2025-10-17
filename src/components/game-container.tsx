@@ -10,6 +10,7 @@ import { getStoneColor } from "@/lib/game/stone-color"
 import { DEFAULT_CONFIG } from "@/lib/config"
 import { useGameState } from "@/lib/game/game-state"
 import { AudioManager } from "@/lib/audio/audio-manager"
+// import { AudioManager } from "@/lib/audio/audio-manager"
 
 const CANVAS_WIDTH = 800
 const CANVAS_HEIGHT = 600
@@ -28,6 +29,7 @@ export function GameContainer() {
   const dropStartTimeRef = useRef<number>(Date.now())
 
   const [renderTrigger, setRenderTrigger] = useState(0)
+  const [testCounter, setTestCounter] = useState(0)
   const [placingStone, setPlacingStone] = useState<{
     vertices: { x: number; y: number }[]
     x: number
@@ -72,80 +74,112 @@ export function GameContainer() {
 
   // Initialize physics engine and audio
   useEffect(() => {
-    engineRef.current = new PhysicsEngine(CANVAS_WIDTH, CANVAS_HEIGHT, DEFAULT_CONFIG.gravity)
+    // Only run on client side
+    if (typeof window === 'undefined') return
+    try {
+      console.log("[v0] Starting game container initialization")
+      engineRef.current = new PhysicsEngine(CANVAS_WIDTH, CANVAS_HEIGHT, DEFAULT_CONFIG.gravity)
 
-    const initAudio = () => {
-      audioRef.current.initialize()
-      document.removeEventListener("click", initAudio)
-      document.removeEventListener("keydown", initAudio)
-    }
-    document.addEventListener("click", initAudio)
-    document.addEventListener("keydown", initAudio)
+      // Audio temporarily disabled for debugging
+      // const initAudio = async () => {
+      //   try {
+      //     await audioRef.current.initialize()
+      //     console.log("[v0] Audio initialized successfully")
+      //   } catch (error) {
+      //     console.error("[v0] Audio initialization failed:", error)
+      //   }
+      //   document.removeEventListener("click", initAudio)
+      //   document.removeEventListener("keydown", initAudio)
+      // }
+      // document.addEventListener("click", initAudio)
+      // document.addEventListener("keydown", initAudio)
 
-    const gameLoop = () => {
-      const now = Date.now()
-      const deltaTime = now - lastTimeRef.current
-      lastTimeRef.current = now
+      const gameLoop = () => {
+        const now = Date.now()
+        const deltaTime = now - lastTimeRef.current
+        lastTimeRef.current = now
 
-      if (engineRef.current) {
-        if (physicsActive) {
-          engineRef.current.update(deltaTime)
-        }
+        if (engineRef.current) {
+          if (physicsActive) {
+            engineRef.current.update(deltaTime)
+          }
 
-        // Update render periodically
-        if (Math.random() < 0.1) {
-          setRenderTrigger((prev) => prev + 1)
-        }
+          // Update render periodically
+          if (Math.random() < 0.1) {
+            setRenderTrigger((prev) => prev + 1)
+          }
 
-        marketAlignmentTimeRef.current += deltaTime / 1000
-        const newAlignment = Math.sin(marketAlignmentTimeRef.current * 0.1) * 0.5
-        setMarketAlignment(newAlignment)
+          // Test counter to verify React is working
+          setTestCounter((prev) => prev + 1)
 
-        if (newAlignment < -0.3 && phase === "stable" && stonesPlaced > 5) {
-          console.log("[v0] Market misalignment detected - triggering loss event")
-          triggerLossEvent()
-        }
+          marketAlignmentTimeRef.current += deltaTime / 1000
+          const newAlignment = Math.sin(marketAlignmentTimeRef.current * 0.1) * 0.5
+          setMarketAlignment(newAlignment)
 
-        if (phase === "placing" && placingStone) {
-          const elapsed = now - dropStartTimeRef.current
-          const duration = DEFAULT_CONFIG.placementDuration / timeScale
-          const progress = Math.min(elapsed / duration, 1)
-          setPlacementProgress(progress)
+          if (newAlignment < -0.3 && phase === "stable" && stonesPlaced > 5) {
+            console.log("[v0] Market misalignment detected - triggering loss event")
+            triggerLossEvent()
+          }
 
-          // Easing function (ease-in-out)
-          const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
+          if (phase === "placing" && placingStone) {
+            const elapsed = now - dropStartTimeRef.current
+            const duration = DEFAULT_CONFIG.placementDuration / timeScale
+            const progress = Math.min(elapsed / duration, 1)
+            setPlacementProgress(progress)
 
-          // Update placing stone position
-          const currentY = placingStone.startY + (placingStone.targetY - placingStone.startY) * eased
-          setPlacingStone({
-            ...placingStone,
-            y: currentY,
-          })
+            // Easing function (ease-in-out)
+            const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
 
-          // When placement complete, add to stable stack
-          if (progress >= 1) {
-            finalizePlacement()
+            // Update placing stone position
+            const currentY = placingStone.startY + (placingStone.targetY - placingStone.startY) * eased
+            setPlacingStone({
+              ...placingStone,
+              y: currentY,
+            })
+
+            // When placement complete, add to stable stack
+            if (progress >= 1) {
+              finalizePlacement()
+            }
           }
         }
+
+        animationFrameRef.current = requestAnimationFrame(gameLoop)
       }
 
       animationFrameRef.current = requestAnimationFrame(gameLoop)
-    }
 
-    animationFrameRef.current = requestAnimationFrame(gameLoop)
+      console.log("[v0] Game container initialized, scheduling first drop")
+      scheduleNextDrop()
 
-    scheduleNextDrop()
+      // For testing: also drop a stone immediately to verify generation works
+      setTimeout(() => {
+        console.log("[v0] Testing immediate stone generation")
+        if (typeof document !== 'undefined') {
+          document.title = "STONE TEST - " + Date.now()
+        }
+        dropNextStone()
+      }, 1000)
 
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
+      // Also drop another one after a longer delay for more testing
+      setTimeout(() => {
+        console.log("[v0] Testing second stone generation")
+        dropNextStone()
+      }, 5000)
+
+      return () => {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current)
+        }
+        if (dropTimerRef.current) {
+          clearTimeout(dropTimerRef.current)
+        }
+        audioRef.current.dispose()
+        // document.removeEventListener("click", initAudio)
+        // document.removeEventListener("keydown", initAudio)
       }
-      if (dropTimerRef.current) {
-        clearTimeout(dropTimerRef.current)
-      }
-      audioRef.current.dispose()
-      document.removeEventListener("click", initAudio)
-      document.removeEventListener("keydown", initAudio)
+    } catch (error) {
+      console.error("[v0] Game container initialization failed:", error)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -159,6 +193,7 @@ export function GameContainer() {
 
   const scheduleNextDrop = () => {
     const adjustedCadence = DEFAULT_CONFIG.dropCadence / timeScale
+    console.log(`[v0] Scheduling next stone drop in ${adjustedCadence}ms (cadence: ${DEFAULT_CONFIG.dropCadence}ms, timeScale: ${timeScale}x)`)
     dropTimerRef.current = setTimeout(() => {
       dropNextStone()
       scheduleNextDrop()
@@ -166,7 +201,10 @@ export function GameContainer() {
   }
 
   const dropNextStone = () => {
-    if (!engineRef.current) return
+    if (!engineRef.current) {
+      console.log("[v0] Cannot drop stone - engine not initialized")
+      return
+    }
 
     // Get next candle
     const candle = candleSourceRef.current.next()
@@ -183,6 +221,8 @@ export function GameContainer() {
     const targetY = GROUND_Y - 40 - stoneCountRef.current * 5 // Stack position
 
     stoneCountRef.current++
+
+    console.log(`[v0] Dropping stone #${stoneCountRef.current} at position (${CANVAS_WIDTH / 2}, ${startY}) -> (${CANVAS_WIDTH / 2}, ${targetY})`)
 
     setPlacingStone({
       vertices: normalizedVertices,
@@ -207,7 +247,10 @@ export function GameContainer() {
   }
 
   const finalizePlacement = () => {
-    if (!placingStone || !engineRef.current) return
+    if (!placingStone || !engineRef.current) {
+      console.log("[v0] Cannot finalize placement - missing stone or engine")
+      return
+    }
 
     // Add stone to physics engine but keep physics disabled
     engineRef.current.addStone(
@@ -225,7 +268,7 @@ export function GameContainer() {
     const newOffset = towerOffset + 5
     setTowerOffset(newOffset)
 
-    console.log("[v0] Stone placed - tower height:", stonesPlaced + 1)
+    console.log(`[v0] Stone finalized - tower height: ${stonesPlaced + 1}, offset: ${newOffset}`)
   }
 
   const triggerLossEvent = () => {
@@ -274,6 +317,7 @@ export function GameContainer() {
           <div>Stones: {stonesPlaced}</div>
           <div>Alignment: {marketAlignment.toFixed(2)}</div>
           <div>Phase: {phase}</div>
+          <div>Test Counter: {testCounter}</div>
         </div>
       )}
     </div>

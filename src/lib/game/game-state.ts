@@ -59,7 +59,7 @@ export const useGameState = create<GameState>((set) => ({
   dropStartTime: null,
   canDecide: true,
   placementProgress: 0,
-  debugMode: false,
+  debugMode: true,
   timeScale: 1,
 
   // Actions
@@ -70,7 +70,10 @@ export const useGameState = create<GameState>((set) => ({
   setCurrentStone: (currentStone) => set({ currentStone }),
   setDropStartTime: (dropStartTime) => set({ dropStartTime }),
   setCanDecide: (canDecide) => set({ canDecide }),
-  incrementStonesPlaced: () => set((state) => ({ stonesPlaced: state.stonesPlaced + 1 })),
+  incrementStonesPlaced: () => set((state) => {
+    console.log(`[v0] Incrementing stones placed from ${state.stonesPlaced} to ${state.stonesPlaced + 1}`)
+    return { stonesPlaced: state.stonesPlaced + 1 }
+  }),
   setConsecutiveUnstable: (consecutiveUnstable) => set({ consecutiveUnstable }),
   setPhysicsActive: (physicsActive) => set({ physicsActive }),
   setMarketAlignment: (marketAlignment) => set({ marketAlignment }),

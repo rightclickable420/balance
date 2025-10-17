@@ -1,9 +1,24 @@
 "use client"
 
+import { useEffect } from "react"
 import { useGameState } from "@/lib/game/game-state"
 
 export function GameUI() {
   const { stonesPlaced, canDecide, phase } = useGameState()
+
+  console.log(`[v0] GameUI render - stones: ${stonesPlaced}, phase: ${phase}, canDecide: ${canDecide}`)
+
+  // Test if basic JavaScript works (only on client side)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      try {
+        document.title = `Balance - Stones: ${stonesPlaced}`
+        console.log(`[v0] Title set to: Balance - Stones: ${stonesPlaced}`)
+      } catch (error) {
+        console.error("[v0] Failed to set title:", error)
+      }
+    }
+  }, [stonesPlaced])
 
   return (
     <div className="absolute top-4 left-4 right-4 flex items-start justify-between pointer-events-none">

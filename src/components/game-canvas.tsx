@@ -110,45 +110,48 @@ export function GameCanvas({ width, height, engineRef, groundY, renderTrigger, p
     }
 
     if (placingStone) {
-      ctx.save()
+       console.log(`[v0] Rendering placing stone at (${placingStone.x}, ${placingStone.y}) with color ${placingStone.color}`)
+       ctx.save()
 
-      const { vertices, x, y, color } = placingStone
+       const { vertices, x, y, color } = placingStone
 
-      // Add gradient for placing stone too
-      const gradient = ctx.createLinearGradient(x, y - 30, x, y + 30)
-      gradient.addColorStop(0, color)
-      const darkerColor = color.replace(/rgb$$(\d+),\s*(\d+),\s*(\d+)$$/, (_, r, g, b) => {
-        return `rgb(${Math.floor(Number(r) * 0.85)}, ${Math.floor(Number(g) * 0.85)}, ${Math.floor(Number(b) * 0.85)})`
-      })
-      gradient.addColorStop(1, darkerColor)
+       // Add gradient for placing stone too
+       const gradient = ctx.createLinearGradient(x, y - 30, x, y + 30)
+       gradient.addColorStop(0, color)
+       const darkerColor = color.replace(/rgb$$(\d+),\s*(\d+),\s*(\d+)$$/, (_, r, g, b) => {
+         return `rgb(${Math.floor(Number(r) * 0.85)}, ${Math.floor(Number(g) * 0.85)}, ${Math.floor(Number(b) * 0.85)})`
+       })
+       gradient.addColorStop(1, darkerColor)
 
-      ctx.beginPath()
-      ctx.globalAlpha = 0.95
+       ctx.beginPath()
+       ctx.globalAlpha = 0.95
 
-      for (let i = 0; i < vertices.length; i++) {
-        const screenX = x + vertices[i].x
-        const screenY = y + vertices[i].y
+       for (let i = 0; i < vertices.length; i++) {
+         const screenX = x + vertices[i].x
+         const screenY = y + vertices[i].y
 
-        if (i === 0) {
-          ctx.moveTo(screenX, screenY)
-        } else {
-          ctx.lineTo(screenX, screenY)
-        }
-      }
+         if (i === 0) {
+           ctx.moveTo(screenX, screenY)
+         } else {
+           ctx.lineTo(screenX, screenY)
+         }
+       }
 
-      ctx.closePath()
+       ctx.closePath()
 
-      ctx.fillStyle = gradient
-      ctx.fill()
+       ctx.fillStyle = gradient
+       ctx.fill()
 
-      ctx.globalAlpha = 1
-      ctx.strokeStyle = getStoneOutlineColor(color)
-      ctx.lineWidth = 2
-      ctx.lineJoin = "round"
-      ctx.stroke()
+       ctx.globalAlpha = 1
+       ctx.strokeStyle = getStoneOutlineColor(color)
+       ctx.lineWidth = 2
+       ctx.lineJoin = "round"
+       ctx.stroke()
 
-      ctx.restore()
-    }
+       ctx.restore()
+     } else {
+       console.log("[v0] No placing stone to render")
+     }
 
     ctx.restore()
   }, [width, height, engineRef, groundY, renderTrigger, placingStone, towerOffset])
