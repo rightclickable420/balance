@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { Candle } from "../types"
 import type { Stone } from "./physics-engine"
+import type { Features } from "@/lib/data/features"
 
 export type GamePhase = "waiting" | "hovering" | "placing" | "stable" | "loss" | "settled"
 export type Stance = "long" | "short" | "flat"
@@ -27,6 +28,8 @@ export interface GameState {
   debugMode: boolean
   timeScale: number
   hoverStance: Stance
+  latestFeatures: Features | null
+  decisionProgress: number
 
   // Actions
   setPhase: (phase: GamePhase) => void
@@ -45,6 +48,8 @@ export interface GameState {
   setDebugMode: (debug: boolean) => void
   setTimeScale: (scale: number) => void
   setHoverStance: (stance: Stance) => void
+  setLatestFeatures: (features: Features | null) => void
+  setDecisionProgress: (progress: number) => void
   reset: () => void
 }
 
@@ -65,6 +70,8 @@ export const useGameState = create<GameState>((set) => ({
   debugMode: true,
   timeScale: 1,
   hoverStance: "long",
+  latestFeatures: null,
+  decisionProgress: 0,
 
   // Actions
   setPhase: (phase) => set({ phase }),
@@ -86,6 +93,8 @@ export const useGameState = create<GameState>((set) => ({
   setDebugMode: (debugMode) => set({ debugMode }),
   setTimeScale: (timeScale) => set({ timeScale }),
   setHoverStance: (hoverStance) => set({ hoverStance }),
+  setLatestFeatures: (latestFeatures) => set({ latestFeatures }),
+  setDecisionProgress: (decisionProgress) => set({ decisionProgress }),
   reset: () =>
     set({
       phase: "waiting",
@@ -103,5 +112,7 @@ export const useGameState = create<GameState>((set) => ({
       debugMode: false,
       timeScale: 1,
       hoverStance: "long",
+      latestFeatures: null,
+      decisionProgress: 0,
     }),
 }))

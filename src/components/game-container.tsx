@@ -135,6 +135,8 @@ export function GameContainer() {
     canDecide,
     setCanDecide,
     setHoverStance,
+    setLatestFeatures,
+    setDecisionProgress,
   } = useGameState()
 
   const getHoverModulatedParams = useCallback(
@@ -249,7 +251,8 @@ export function GameContainer() {
 
     setHoverStone(updated)
     setHoverStance("flat")
-  }, [isDecisionActive, setHoverStance, setHoverStone])
+    setDecisionProgress(0.2)
+  }, [isDecisionActive, setDecisionProgress, setHoverStance, setHoverStone])
 
   const recalcStackFromPhysics = useCallback(() => {
     const engine = engineRef.current
@@ -485,6 +488,7 @@ export function GameContainer() {
     }
 
     setCanDecide(false)
+    setDecisionProgress(0)
     decisionDeadlineRef.current = null
 
     setHoverStone(null)
@@ -518,7 +522,7 @@ export function GameContainer() {
         `[v0] Spawn #${stoneSequenceRef.current} - simulated price ${priceChange > 0 ? "+" : ""}${priceChange.toFixed(1)}%`,
       )
     }
-  }, [setCanDecide, setDropStartTime, setPhase, setPlacementProgress, setPlacingStone, setHoverStone, timeScale])
+  }, [setCanDecide, setDecisionProgress, setDropStartTime, setPhase, setPlacementProgress, setPlacingStone, setHoverStone, timeScale])
 
   const armNextDrop = useCallback(() => {
     if (phase !== "hovering") return
@@ -581,12 +585,14 @@ export function GameContainer() {
     decisionDeadlineRef.current = spawnedAt + decisionDuration
     hoverModulationTimerRef.current = spawnedAt
 
+    setLatestFeatures(features)
     setHoverStone(hover)
     setPhase("hovering")
     setDropStartTime(null)
     setPlacementProgress(0)
     setCanDecide(true)
-    setHoverStance("long")
+    setHoverStance(DEFAULT_STANCE)
+    setDecisionProgress(1)
 
     console.log(
       `[v0] Prepared hover stone #${stoneSequenceRef.current + 1} at (${hover.x}, ${hover.y}) targeting ${targetY}`,
@@ -598,6 +604,8 @@ export function GameContainer() {
     computeBounds,
     computeVisualFromCandle,
     setCanDecide,
+    setDecisionProgress,
+    setLatestFeatures,
     setDropStartTime,
     setHoverStance,
     setHoverStone,
@@ -638,6 +646,7 @@ export function GameContainer() {
       console.log("[v0] Finalizing discard - stone will not enter stack")
       setPlacingStone(null)
       setPhase("stable")
+      setDecisionProgress(0)
       prepareHoverStone()
       return
     }
@@ -680,6 +689,7 @@ export function GameContainer() {
     setPhase("loss")
     setPhysicsActive(true)
     setCanDecide(false)
+    setDecisionProgress(0)
     decisionDeadlineRef.current = null
 
     const allStones = engineRef.current.getStones()
@@ -712,6 +722,11 @@ export function GameContainer() {
     if (!deadline || duration <= 0) return 0
     return clamp((deadline - Date.now()) / duration, 0, 1)
   })()
+
+  useEffect(() => {
+    setDecisionProgress(decisionProgress)
+  }, [decisionProgress, setDecisionProgress])
+
 
   return (
     <div ref={containerRef} className="relative touch-none">

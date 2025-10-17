@@ -29,6 +29,8 @@ interface GameCanvasProps {
   } | null
 }
 
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
+
 const adjustHex = (hex: string, factor: number) => {
   const normalized = hex.startsWith("#") ? hex.slice(1) : hex
   if (normalized.length !== 6) return hex
@@ -67,63 +69,107 @@ export function GameCanvas({
     // Get stones from physics engine
     const stones = engineRef.current?.getStones() || []
 
-    // Draw each stone
-    for (const stone of stones) {
-      const { body, vertices, color } = stone
-
+    const drawHighlight = (centerX: number, centerY: number, radiusX: number, radiusY: number, angle: number) => {
       ctx.save()
-
-      const gradient = ctx.createLinearGradient(
-        body.position.x,
-        body.position.y - stone.params.radius,
-        body.position.x,
-        body.position.y + stone.params.radius,
-      )
-      gradient.addColorStop(0, color)
-      gradient.addColorStop(1, adjustHex(color, 0.85))
-
-      const traceBodyPath = () => {
-        ctx.beginPath()
-        for (let i = 0; i < vertices.length; i++) {
-          const vertex = vertices[i]
-          const cos = Math.cos(body.angle)
-          const sin = Math.sin(body.angle)
-          const rotatedX = vertex.x * cos - vertex.y * sin
-          const rotatedY = vertex.x * sin + vertex.y * cos
-          const screenX = body.position.x + rotatedX
-          const screenY = body.position.y + rotatedY
-          if (i === 0) {
-            ctx.moveTo(screenX, screenY)
-          } else {
-            ctx.lineTo(screenX, screenY)
-          }
-        }
-        ctx.closePath()
-      }
-
-      ctx.globalAlpha = 0.95
+      ctx.translate(centerX, centerY)
+      ctx.rotate(angle)
+      ctx.beginPath()
+      ctx.ellipse(radiusX * -0.15, -radiusY * 0.45, radiusX * 0.55, radiusY * 0.22, 0, 0, Math.PI * 2)
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radiusX * 0.7)
+      gradient.addColorStop(0, "rgba(255,255,255,0.75)")
+      gradient.addColorStop(1, "rgba(255,255,255,0)")
       ctx.fillStyle = gradient
-      traceBodyPath()
       ctx.fill()
-
-      ctx.globalAlpha = 1
-      ctx.strokeStyle = getStoneOutlineColor(color)
-      ctx.lineWidth = 2
-      ctx.lineJoin = "round"
-      traceBodyPath()
-      ctx.stroke()
-
       ctx.restore()
     }
 
+    const traceBodyPath = (
+      vertices: { x: number; y: number }[],
+      bodyX: number,
+      bodyY: number,
+      angle: number,
+    ) => {
+      ctx.beginPath()
+      const cos = Math.cos(angle)
+      const sin = Math.sin(angle)
+      for (let i = 0; i < vertices.length; i++) {
+        const vertex = vertices[i]
+        const rotatedX = vertex.x * cos - vertex.y * sin
+        const rotatedY = vertex.x * sin + vertex.y * cos
+        const screenX = bodyX + rotatedX
+        const screenY = bodyY + rotatedY
+        if (i === 0) {
+          ctx.moveTo(screenX, screenY)
+        } else {
+          ctx.lineTo(screenX, screenY)
+        }
+      }
+      ctx.closePath()
+    }
+
+    for (const stone of stones) {
+      const { body, vertices, color } = stone
+      const radiusX = stone.params.radius * stone.params.aspect
+      const radiusY = stone.params.radius
+
+      const gradient = ctx.createLinearGradient(
+        body.position.x,
+        body.position.y - radiusY,
+        body.position.x,
+        body.position.y + radiusY,
+      )
+      gradient.addColorStop(0, adjustHex(color, 1.1))
+      gradient.addColorStop(1, adjustHex(color, 0.78))
+
+      ctx.save()
+      ctx.shadowColor = "rgba(0,0,0,0.25)"
+      ctx.shadowBlur = 18
+      ctx.shadowOffsetY = 8
+      ctx.globalAlpha = 0.92
+      ctx.fillStyle = gradient
+      traceBodyPath(vertices, body.position.x, body.position.y, body.angle)
+      ctx.fill()
+      ctx.restore()
+
+      ctx.save()
+      ctx.globalAlpha = 1
+      ctx.lineWidth = 2
+      ctx.lineJoin = "round"
+      ctx.strokeStyle = getStoneOutlineColor(color)
+      traceBodyPath(vertices, body.position.x, body.position.y, body.angle)
+      ctx.stroke()
+      ctx.restore()
+
+      drawHighlight(body.position.x, body.position.y, radiusX, radiusY, body.angle)
+    }
+
     const drawPreviewStone = (
-      stone: { vertices: { x: number; y: number }[]; x: number; y: number; color: string; stance?: Stance },
+      stone: {
+        vertices: { x: number; y: number }[]
+        x: number
+        y: number
+        color: string
+        stance?: Stance
+      },
       options: { alpha?: number; highlight?: boolean; progress?: number } = {},
     ) => {
       const { vertices, x, y, color, stance = "long" } = stone
       const alpha = options.alpha ?? (stance === "flat" ? 0.35 : 0.95)
-      const highlight = options.highlight ?? false
-      const progress = Math.max(0, Math.min(1, options.progress ?? 0))
+      const highlightActive = options.highlight ?? false
+      const progress = clamp01(options.progress ?? 0)
+
+      let minX = Infinity
+      let maxX = -Infinity
+      let minY = Infinity
+      let maxY = -Infinity
+      for (const vertex of vertices) {
+        if (vertex.x < minX) minX = vertex.x
+        if (vertex.x > maxX) maxX = vertex.x
+        if (vertex.y < minY) minY = vertex.y
+        if (vertex.y > maxY) maxY = vertex.y
+      }
+      const radiusX = (maxX - minX) / 2
+      const radiusY = (maxY - minY) / 2
 
       const baseColor =
         stance === "flat"
@@ -131,9 +177,10 @@ export function GameCanvas({
           : stance === "short"
             ? adjustHex(color, 0.9)
             : color
-      const gradient = ctx.createLinearGradient(x, y - 30, x, y + 30)
-      gradient.addColorStop(0, baseColor)
-      gradient.addColorStop(1, adjustHex(baseColor, 0.85))
+
+      const gradient = ctx.createLinearGradient(x, y - radiusY, x, y + radiusY)
+      gradient.addColorStop(0, adjustHex(baseColor, 1.12))
+      gradient.addColorStop(1, adjustHex(baseColor, 0.78))
 
       const tracePath = () => {
         ctx.beginPath()
@@ -150,20 +197,29 @@ export function GameCanvas({
       }
 
       ctx.save()
+      ctx.shadowColor = "rgba(0,0,0,0.2)"
+      ctx.shadowBlur = 14
+      ctx.shadowOffsetY = 6
       ctx.globalAlpha = alpha
       ctx.fillStyle = gradient
       tracePath()
       ctx.fill()
+      ctx.restore()
 
+      ctx.save()
       ctx.globalAlpha = 1
       ctx.lineWidth = 2
       ctx.lineJoin = "round"
       tracePath()
       ctx.strokeStyle = getStoneOutlineColor(baseColor)
       ctx.stroke()
+      ctx.restore()
 
-      if (highlight) {
-        const pulse = 0.3 + 0.5 * (1 - progress)
+      drawHighlight(x, y, radiusX, radiusY, 0)
+
+      if (highlightActive) {
+        const pulse = 0.35 + 0.45 * (1 - progress)
+        ctx.save()
         ctx.globalAlpha = pulse
         ctx.lineWidth = 3
         const highlightColor =
@@ -175,9 +231,8 @@ export function GameCanvas({
         ctx.strokeStyle = highlightColor
         tracePath()
         ctx.stroke()
+        ctx.restore()
       }
-
-      ctx.restore()
     }
 
     if (hoverStone) {
