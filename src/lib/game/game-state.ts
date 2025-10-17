@@ -2,7 +2,7 @@ import { create } from "zustand"
 import type { Candle } from "../types"
 import type { Stone } from "./physics-engine"
 
-export type GamePhase = "waiting" | "placing" | "stable" | "loss" | "settled"
+export type GamePhase = "waiting" | "hovering" | "placing" | "stable" | "loss" | "settled"
 
 export interface GameState {
   // Game status

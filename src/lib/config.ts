@@ -1,7 +1,7 @@
 import type { GameConfig } from "./types"
 
 export const DEFAULT_CONFIG: GameConfig = {
-  dropCadence: 3000, // 3 seconds per stone (for better testing)
+  dropCadence: 12000, // 12 seconds per stone keeps cadence slower than placement
   timeScale: 1, // Multiplier for testing (1 = normal, 60 = 60x faster)
   decisionWindow: 0.4, // first 40% of fall time
   gravity: 980, // pixels/s² (roughly Earth gravity at 1px = 1cm)

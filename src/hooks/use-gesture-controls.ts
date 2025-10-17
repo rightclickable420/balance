@@ -28,7 +28,7 @@ export function useGestureControls(elementRef: React.RefObject<HTMLElement>, han
       },
 
       // Swipe to discard
-      onDrag: ({ movement: [mx, my], velocity: [vx], direction: [dx], cancel }) => {
+      onDrag: ({ movement: [mx, my], velocity: [vx], cancel }) => {
         // Detect horizontal swipe (left or right)
         const isHorizontalSwipe = Math.abs(mx) > Math.abs(my) && Math.abs(mx) > 50
         const isFastSwipe = Math.abs(vx) > 0.5

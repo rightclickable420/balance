@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { GameCanvas } from "./game-canvas"
 import { PhysicsEngine } from "@/lib/game/physics-engine"
 import { MockCandleSource } from "@/lib/data/mock-candle-source"
@@ -10,11 +10,36 @@ import { getStoneColor } from "@/lib/game/stone-color"
 import { DEFAULT_CONFIG } from "@/lib/config"
 import { useGameState } from "@/lib/game/game-state"
 import { AudioManager } from "@/lib/audio/audio-manager"
+import type { Candle, StoneParams } from "@/lib/types"
 // import { AudioManager } from "@/lib/audio/audio-manager"
 
 const CANVAS_WIDTH = 800
 const CANVAS_HEIGHT = 600
 const GROUND_Y = CANVAS_HEIGHT - 50
+const HOVER_VERTICAL_OFFSET = 120
+const STACK_GAP = -4
+const INITIAL_STACK_COUNT = 10
+const DESIRED_TOP_SCREEN_Y = 240
+
+type StoneBounds = {
+  minY: number
+  maxY: number
+}
+
+type HoverStone = {
+  vertices: { x: number; y: number }[]
+  x: number
+  y: number
+  color: string
+  targetY: number
+  params: StoneParams
+  candle: Candle
+  bounds: StoneBounds
+}
+
+type PlacingStone = HoverStone & {
+  startY: number
+}
 
 export function GameContainer() {
   const engineRef = useRef<PhysicsEngine | null>(null)
@@ -22,34 +47,69 @@ export function GameContainer() {
   const audioRef = useRef<AudioManager>(new AudioManager())
   const animationFrameRef = useRef<number>()
   const lastTimeRef = useRef<number>(Date.now())
-  const dropTimerRef = useRef<NodeJS.Timeout>()
+  const dropTimerRef = useRef<NodeJS.Timeout | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const marketAlignmentTimeRef = useRef<number>(0)
-  const stoneCountRef = useRef<number>(0)
+  const stoneSequenceRef = useRef<number>(0)
   const dropStartTimeRef = useRef<number>(Date.now())
+  const nextDropAtRef = useRef<number | null>(null)
+  const stackSurfaceYRef = useRef<number>(GROUND_Y)
+  const stackTopYRef = useRef<number>(GROUND_Y)
+  const towerOffsetTargetRef = useRef<number>(0)
+  const towerOffsetInitializedRef = useRef<boolean>(false)
 
   const [renderTrigger, setRenderTrigger] = useState(0)
   const [testCounter, setTestCounter] = useState(0)
-  const [placingStone, setPlacingStone] = useState<{
-    vertices: { x: number; y: number }[]
-    x: number
-    y: number
-    color: string
-    startY: number
-    targetY: number
-  } | null>(null)
+  const [hoverStoneState, setHoverStoneState] = useState<HoverStone | null>(null)
+  const hoverStoneRef = useRef<HoverStone | null>(null)
+  const [placingStoneState, setPlacingStoneState] = useState<PlacingStone | null>(null)
+  const placingStoneRef = useRef<PlacingStone | null>(null)
+
+  const setHoverStone = useCallback(
+    (value: HoverStone | null | ((prev: HoverStone | null) => HoverStone | null)) => {
+      setHoverStoneState((prev) => {
+        const next =
+          typeof value === "function"
+            ? (value as (prev: HoverStone | null) => HoverStone | null)(prev)
+            : value
+        hoverStoneRef.current = next
+        return next
+      })
+    },
+    [],
+  )
+
+  const setPlacingStone = useCallback(
+    (value: PlacingStone | null | ((prev: PlacingStone | null) => PlacingStone | null)) => {
+      setPlacingStoneState((prev) => {
+        const next =
+          typeof value === "function"
+            ? (value as (prev: PlacingStone | null) => PlacingStone | null)(prev)
+            : value
+        placingStoneRef.current = next
+        return next
+      })
+    },
+    [],
+  )
+
+  const clearDropTimer = useCallback(() => {
+    if (dropTimerRef.current) {
+      clearTimeout(dropTimerRef.current)
+      dropTimerRef.current = null
+    }
+  }, [])
+
+  const hoverStone = hoverStoneState
+  const placingStone = placingStoneState
 
   const {
     phase,
     setPhase,
     setDropStartTime,
-    physicsActive,
     setPhysicsActive,
     marketAlignment,
     setMarketAlignment,
-    towerOffset,
-    setTowerOffset,
-    placementProgress,
     setPlacementProgress,
     debugMode,
     setDebugMode,
@@ -58,6 +118,86 @@ export function GameContainer() {
     stonesPlaced,
     incrementStonesPlaced,
   } = useGameState()
+
+  const syncTowerOffset = useCallback(() => {
+    const top = stackTopYRef.current
+    const desiredOffset = DESIRED_TOP_SCREEN_Y - top
+    towerOffsetTargetRef.current = desiredOffset
+    if (!towerOffsetInitializedRef.current) {
+      useGameState.setState({ towerOffset: desiredOffset })
+      towerOffsetInitializedRef.current = true
+    }
+  }, [])
+
+  const computeBounds = useCallback((vertices: { x: number; y: number }[]): StoneBounds => {
+    let minY = Infinity
+    let maxY = -Infinity
+    for (const { y } of vertices) {
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+    return { minY, maxY }
+  }, [])
+
+  const recalcStackFromPhysics = useCallback(() => {
+    const engine = engineRef.current
+    if (!engine) return
+
+    const stones = engine.getStones()
+    if (stones.length === 0) {
+      stackTopYRef.current = GROUND_Y
+      stackSurfaceYRef.current = GROUND_Y
+      syncTowerOffset()
+      return
+    }
+
+    let top = Infinity
+    for (const stone of stones) {
+      let minY = Infinity
+      for (const vertex of stone.vertices) {
+        if (vertex.y < minY) minY = vertex.y
+      }
+      const stoneTop = stone.body.position.y + minY
+      if (stoneTop < top) {
+        top = stoneTop
+      }
+    }
+
+    stackTopYRef.current = top
+    stackSurfaceYRef.current = top - STACK_GAP
+    syncTowerOffset()
+  }, [syncTowerOffset])
+
+  const prepopulateStack = useCallback(() => {
+    const engine = engineRef.current
+    if (!engine) return
+
+    let surface = GROUND_Y
+    let top = surface
+
+    for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
+      const candle = candleSourceRef.current.next()
+      const params = candleToStone(candle)
+      const vertices = normalizePoints(generateStoneShape(params))
+      const bounds = computeBounds(vertices)
+      const color = getStoneColor(params.seed)
+
+      const targetY = surface - bounds.maxY
+
+      engine.addStone(vertices, params, CANVAS_WIDTH / 2, targetY, color)
+
+      top = targetY + bounds.minY
+      surface = top - STACK_GAP
+
+      stoneSequenceRef.current += 1
+    }
+
+    stackTopYRef.current = top
+    stackSurfaceYRef.current = surface
+
+    useGameState.setState({ stonesPlaced: INITIAL_STACK_COUNT, phase: "stable" })
+    syncTowerOffset()
+  }, [computeBounds, syncTowerOffset])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -100,7 +240,22 @@ export function GameContainer() {
         lastTimeRef.current = now
 
         if (engineRef.current) {
-          if (physicsActive) {
+          const {
+            physicsActive: currentPhysicsActive,
+            phase: currentPhase,
+            stonesPlaced: currentStonesPlaced,
+            timeScale: currentTimeScale,
+            towerOffset: currentTowerOffset,
+          } = useGameState.getState()
+
+          const targetOffset = towerOffsetTargetRef.current
+          if (Math.abs(targetOffset - currentTowerOffset) > 0.1) {
+            const lerpFactor = Math.min(1, deltaTime / 200)
+            const newOffset = currentTowerOffset + (targetOffset - currentTowerOffset) * lerpFactor
+            useGameState.setState({ towerOffset: newOffset })
+          }
+
+          if (currentPhysicsActive) {
             engineRef.current.update(deltaTime)
           }
 
@@ -116,14 +271,16 @@ export function GameContainer() {
           const newAlignment = Math.sin(marketAlignmentTimeRef.current * 0.1) * 0.5
           setMarketAlignment(newAlignment)
 
-          if (newAlignment < -0.3 && phase === "stable" && stonesPlaced > 5) {
+          if (newAlignment < -0.3 && currentPhase === "stable" && currentStonesPlaced > 5) {
             console.log("[v0] Market misalignment detected - triggering loss event")
             triggerLossEvent()
           }
 
-          if (phase === "placing" && placingStone) {
+          const activePlacingStone = placingStoneRef.current
+
+          if (currentPhase === "placing" && activePlacingStone) {
             const elapsed = now - dropStartTimeRef.current
-            const duration = DEFAULT_CONFIG.placementDuration / timeScale
+            const duration = DEFAULT_CONFIG.placementDuration / currentTimeScale
             const progress = Math.min(elapsed / duration, 1)
             setPlacementProgress(progress)
 
@@ -131,11 +288,9 @@ export function GameContainer() {
             const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
 
             // Update placing stone position
-            const currentY = placingStone.startY + (placingStone.targetY - placingStone.startY) * eased
-            setPlacingStone({
-              ...placingStone,
-              y: currentY,
-            })
+            const currentY =
+              activePlacingStone.startY + (activePlacingStone.targetY - activePlacingStone.startY) * eased
+            setPlacingStone((prev) => (prev ? { ...prev, y: currentY } : prev))
 
             // When placement complete, add to stable stack
             if (progress >= 1) {
@@ -149,32 +304,17 @@ export function GameContainer() {
 
       animationFrameRef.current = requestAnimationFrame(gameLoop)
 
-      console.log("[v0] Game container initialized, scheduling first drop")
-      scheduleNextDrop()
+      prepopulateStack()
+      prepareHoverStone()
 
-      // For testing: also drop a stone immediately to verify generation works
-      setTimeout(() => {
-        console.log("[v0] Testing immediate stone generation")
-        if (typeof document !== 'undefined') {
-          document.title = "STONE TEST - " + Date.now()
-        }
-        dropNextStone()
-      }, 1000)
-
-      // Also drop another one after a longer delay for more testing
-      setTimeout(() => {
-        console.log("[v0] Testing second stone generation")
-        dropNextStone()
-      }, 5000)
+      const audioManager = audioRef.current
 
       return () => {
         if (animationFrameRef.current) {
           cancelAnimationFrame(animationFrameRef.current)
         }
-        if (dropTimerRef.current) {
-          clearTimeout(dropTimerRef.current)
-        }
-        audioRef.current.dispose()
+        clearDropTimer()
+        audioManager?.dispose()
         // document.removeEventListener("click", initAudio)
         // document.removeEventListener("keydown", initAudio)
       }
@@ -184,91 +324,158 @@ export function GameContainer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    if (dropTimerRef.current) {
-      clearTimeout(dropTimerRef.current)
-      scheduleNextDrop()
-    }
-  }, [timeScale])
-
-  const scheduleNextDrop = () => {
-    const adjustedCadence = DEFAULT_CONFIG.dropCadence / timeScale
-    console.log(`[v0] Scheduling next stone drop in ${adjustedCadence}ms (cadence: ${DEFAULT_CONFIG.dropCadence}ms, timeScale: ${timeScale}x)`)
-    dropTimerRef.current = setTimeout(() => {
-      dropNextStone()
-      scheduleNextDrop()
-    }, adjustedCadence)
-  }
-
-  const dropNextStone = () => {
-    if (!engineRef.current) {
-      console.log("[v0] Cannot drop stone - engine not initialized")
+  const beginPlacementFromHover = useCallback(() => {
+    const hover = hoverStoneRef.current
+    if (!hover) {
+      console.warn("[v0] Attempted to drop without a hover stone prepared")
       return
     }
 
-    // Get next candle
-    const candle = candleSourceRef.current.next()
-    const stoneParams = candleToStone(candle)
+    setHoverStone(null)
 
-    // Generate stone shape
-    const vertices = generateStoneShape(stoneParams)
-    const normalizedVertices = normalizePoints(vertices)
+    stoneSequenceRef.current += 1
+    console.log(
+      `[v0] Dropping stone #${stoneSequenceRef.current} from hover at (${hover.x}, ${hover.y}) -> target ${hover.targetY}`,
+    )
 
-    // Get color
-    const color = getStoneColor(stoneParams.seed)
+    const placing: PlacingStone = {
+      ...hover,
+      startY: hover.y,
+      y: hover.y,
+    }
 
-    const startY = -100 // Start above screen
-    const targetY = GROUND_Y - 40 - stoneCountRef.current * 5 // Stack position
-
-    stoneCountRef.current++
-
-    console.log(`[v0] Dropping stone #${stoneCountRef.current} at position (${CANVAS_WIDTH / 2}, ${startY}) -> (${CANVAS_WIDTH / 2}, ${targetY})`)
-
-    setPlacingStone({
-      vertices: normalizedVertices,
-      x: CANVAS_WIDTH / 2,
-      y: startY,
-      color,
-      startY,
-      targetY,
-    })
+    setPlacingStone(placing)
 
     dropStartTimeRef.current = Date.now()
     setDropStartTime(dropStartTimeRef.current)
     setPhase("placing")
     setPlacementProgress(0)
 
-    if (debugMode) {
-      const priceChange = ((candle.close - candle.open) / candle.open) * 100
+    const cadence = DEFAULT_CONFIG.dropCadence / timeScale
+    const scheduledAt = nextDropAtRef.current ?? dropStartTimeRef.current
+    nextDropAtRef.current = scheduledAt + cadence
+
+    const { debugMode: currentDebugMode } = useGameState.getState()
+    if (currentDebugMode) {
+      const priceChange = ((hover.candle.close - hover.candle.open) / hover.candle.open) * 100
       console.log(
-        `[v0] Spawn #${stoneCountRef.current} - simulated price ${priceChange > 0 ? "+" : ""}${priceChange.toFixed(1)}%`,
+        `[v0] Spawn #${stoneSequenceRef.current} - simulated price ${priceChange > 0 ? "+" : ""}${priceChange.toFixed(1)}%`,
       )
     }
-  }
+  }, [setDropStartTime, setPhase, setPlacementProgress, setPlacingStone, setHoverStone, timeScale])
+
+  const armNextDrop = useCallback(() => {
+    if (phase !== "hovering") return
+    if (!hoverStoneRef.current) return
+    if (dropTimerRef.current) return
+
+    const cadence = DEFAULT_CONFIG.dropCadence / timeScale
+    const now = Date.now()
+
+    if (nextDropAtRef.current === null) {
+      nextDropAtRef.current = now + cadence
+    } else if (nextDropAtRef.current < now) {
+      while (nextDropAtRef.current < now) {
+        nextDropAtRef.current += cadence
+      }
+    }
+
+    const triggerAt = nextDropAtRef.current ?? now
+    const delay = Math.max(0, triggerAt - now)
+
+    console.log(`[v0] Arming next drop in ${delay}ms (scheduled at ${new Date(triggerAt).toISOString()})`)
+
+    dropTimerRef.current = setTimeout(() => {
+      dropTimerRef.current = null
+      beginPlacementFromHover()
+    }, delay)
+  }, [phase, timeScale, beginPlacementFromHover])
+
+  const prepareHoverStone = useCallback(() => {
+    const landingSurface = stackSurfaceYRef.current
+
+    const candle = candleSourceRef.current.next()
+    const stoneParams = candleToStone(candle)
+    const vertices = normalizePoints(generateStoneShape(stoneParams))
+    const bounds = computeBounds(vertices)
+    const color = getStoneColor(stoneParams.seed)
+
+    const targetY = landingSurface - bounds.maxY
+    const hoverY = targetY - HOVER_VERTICAL_OFFSET
+
+    const hover: HoverStone = {
+      vertices,
+      x: CANVAS_WIDTH / 2,
+      y: hoverY,
+      color,
+      targetY,
+      params: stoneParams,
+      candle,
+      bounds,
+    }
+
+    setHoverStone(hover)
+    setPhase("hovering")
+    setDropStartTime(null)
+    setPlacementProgress(0)
+
+    console.log(
+      `[v0] Prepared hover stone #${stoneSequenceRef.current + 1} at (${hover.x}, ${hover.y}) targeting ${targetY}`,
+    )
+
+    syncTowerOffset()
+    armNextDrop()
+  }, [setHoverStone, setPhase, setDropStartTime, setPlacementProgress, syncTowerOffset, armNextDrop, computeBounds])
+
+  useEffect(() => {
+    if (phase === "hovering") {
+      armNextDrop()
+    } else {
+      clearDropTimer()
+    }
+  }, [phase, armNextDrop, clearDropTimer])
+
+  useEffect(() => {
+    if (phase !== "hovering") return
+    if (!hoverStoneRef.current) return
+    const cadence = DEFAULT_CONFIG.dropCadence / timeScale
+    nextDropAtRef.current = Date.now() + cadence
+    clearDropTimer()
+    armNextDrop()
+  }, [timeScale, phase, armNextDrop, clearDropTimer])
 
   const finalizePlacement = () => {
-    if (!placingStone || !engineRef.current) {
+    const stoneToFinalize = placingStoneRef.current
+    if (!stoneToFinalize || !engineRef.current) {
       console.log("[v0] Cannot finalize placement - missing stone or engine")
       return
     }
 
     // Add stone to physics engine but keep physics disabled
+    const finalY = stoneToFinalize.targetY
+
     engineRef.current.addStone(
-      placingStone.vertices,
-      candleToStone(candleSourceRef.current.peek()),
-      placingStone.x,
-      placingStone.y,
-      placingStone.color,
+      stoneToFinalize.vertices,
+      stoneToFinalize.params,
+      stoneToFinalize.x,
+      finalY,
+      stoneToFinalize.color,
     )
+
+    stackTopYRef.current = finalY + stoneToFinalize.bounds.minY
+    stackSurfaceYRef.current = stackTopYRef.current - STACK_GAP
 
     setPlacingStone(null)
     setPhase("stable")
+
+    const { stonesPlaced: currentStonesPlaced } = useGameState.getState()
     incrementStonesPlaced()
 
-    const newOffset = towerOffset + 5
-    setTowerOffset(newOffset)
+    syncTowerOffset()
 
-    console.log(`[v0] Stone finalized - tower height: ${stonesPlaced + 1}, offset: ${newOffset}`)
+    console.log(`[v0] Stone finalized - tower height: ${currentStonesPlaced + 1}`)
+
+    prepareHoverStone()
   }
 
   const triggerLossEvent = () => {
@@ -297,6 +504,10 @@ export function GameContainer() {
       setPhysicsActive(false)
       setPhase("stable")
       console.log("[v0] Loss event complete - returning to stable mode")
+      recalcStackFromPhysics()
+      if (!hoverStoneRef.current && !placingStoneRef.current) {
+        prepareHoverStone()
+      }
     }, 3000)
   }
 
@@ -306,8 +517,8 @@ export function GameContainer() {
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
         engineRef={engineRef}
-        groundY={GROUND_Y}
         renderTrigger={renderTrigger}
+        hoverStone={hoverStone}
         placingStone={placingStone}
       />
       {debugMode && (

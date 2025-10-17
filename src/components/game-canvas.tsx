@@ -10,8 +10,13 @@ interface GameCanvasProps {
   width: number
   height: number
   engineRef: React.RefObject<PhysicsEngine | null>
-  groundY: number
   renderTrigger: number
+  hoverStone?: {
+    vertices: { x: number; y: number }[]
+    x: number
+    y: number
+    color: string
+  } | null
   placingStone?: {
     vertices: { x: number; y: number }[]
     x: number
@@ -20,7 +25,14 @@ interface GameCanvasProps {
   } | null
 }
 
-export function GameCanvas({ width, height, engineRef, groundY, renderTrigger, placingStone }: GameCanvasProps) {
+export function GameCanvas({
+  width,
+  height,
+  engineRef,
+  renderTrigger,
+  hoverStone,
+  placingStone,
+}: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { towerOffset } = useGameState()
 
@@ -36,15 +48,6 @@ export function GameCanvas({ width, height, engineRef, groundY, renderTrigger, p
 
     ctx.save()
     ctx.translate(0, towerOffset)
-
-    // Draw ground line
-    ctx.strokeStyle = "#4a4a4a"
-    ctx.lineWidth = 2
-    ctx.lineCap = "round"
-    ctx.beginPath()
-    ctx.moveTo(0, groundY)
-    ctx.lineTo(width, groundY)
-    ctx.stroke()
 
     // Get stones from physics engine
     const stones = engineRef.current?.getStones() || []
@@ -109,52 +112,56 @@ export function GameCanvas({ width, height, engineRef, groundY, renderTrigger, p
       ctx.restore()
     }
 
+    const drawPreviewStone = (stone: { vertices: { x: number; y: number }[]; x: number; y: number; color: string }, alpha = 0.95) => {
+      const { vertices, x, y, color } = stone
+
+      ctx.save()
+
+      const gradient = ctx.createLinearGradient(x, y - 30, x, y + 30)
+      gradient.addColorStop(0, color)
+      const darkerColor = color.replace(/rgb$$(\d+),\s*(\d+),\s*(\d+)$$/, (_, r, g, b) => {
+        return `rgb(${Math.floor(Number(r) * 0.85)}, ${Math.floor(Number(g) * 0.85)}, ${Math.floor(Number(b) * 0.85)})`
+      })
+      gradient.addColorStop(1, darkerColor)
+
+      ctx.beginPath()
+      ctx.globalAlpha = alpha
+
+      for (let i = 0; i < vertices.length; i++) {
+        const screenX = x + vertices[i].x
+        const screenY = y + vertices[i].y
+
+        if (i === 0) {
+          ctx.moveTo(screenX, screenY)
+        } else {
+          ctx.lineTo(screenX, screenY)
+        }
+      }
+
+      ctx.closePath()
+
+      ctx.fillStyle = gradient
+      ctx.fill()
+
+      ctx.globalAlpha = 1
+      ctx.strokeStyle = getStoneOutlineColor(color)
+      ctx.lineWidth = 2
+      ctx.lineJoin = "round"
+      ctx.stroke()
+
+      ctx.restore()
+    }
+
+    if (hoverStone) {
+      drawPreviewStone(hoverStone, 0.8)
+    }
+
     if (placingStone) {
-       console.log(`[v0] Rendering placing stone at (${placingStone.x}, ${placingStone.y}) with color ${placingStone.color}`)
-       ctx.save()
-
-       const { vertices, x, y, color } = placingStone
-
-       // Add gradient for placing stone too
-       const gradient = ctx.createLinearGradient(x, y - 30, x, y + 30)
-       gradient.addColorStop(0, color)
-       const darkerColor = color.replace(/rgb$$(\d+),\s*(\d+),\s*(\d+)$$/, (_, r, g, b) => {
-         return `rgb(${Math.floor(Number(r) * 0.85)}, ${Math.floor(Number(g) * 0.85)}, ${Math.floor(Number(b) * 0.85)})`
-       })
-       gradient.addColorStop(1, darkerColor)
-
-       ctx.beginPath()
-       ctx.globalAlpha = 0.95
-
-       for (let i = 0; i < vertices.length; i++) {
-         const screenX = x + vertices[i].x
-         const screenY = y + vertices[i].y
-
-         if (i === 0) {
-           ctx.moveTo(screenX, screenY)
-         } else {
-           ctx.lineTo(screenX, screenY)
-         }
-       }
-
-       ctx.closePath()
-
-       ctx.fillStyle = gradient
-       ctx.fill()
-
-       ctx.globalAlpha = 1
-       ctx.strokeStyle = getStoneOutlineColor(color)
-       ctx.lineWidth = 2
-       ctx.lineJoin = "round"
-       ctx.stroke()
-
-       ctx.restore()
-     } else {
-       console.log("[v0] No placing stone to render")
-     }
+      drawPreviewStone(placingStone)
+    }
 
     ctx.restore()
-  }, [width, height, engineRef, groundY, renderTrigger, placingStone, towerOffset])
+  }, [width, height, engineRef, renderTrigger, hoverStone, placingStone, towerOffset])
 
   return <canvas ref={canvasRef} width={width} height={height} className="block" />
 }

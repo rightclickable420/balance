@@ -202,3 +202,26 @@ rm -rf .next
 ---
 
 **Project Status**: ✅ **Production Ready** | **Last Updated**: October 2025 | **Version**: 1.0.0
+
+## 🗺️ Roadmap — Hover Stones & Live Market Sync
+
+- [x] **Hover Stone Lifecycle**
+  - ✅ `hoverStone` state (`GameContainer`) now preloads the next stone as soon as the previous placement settles.
+  - ✅ Hover stones remain suspended above the stack until the cadence tick fires.
+- [x] **Cadence Controller**
+  - ✅ Timer aligns drops to fixed cadence slots (respects `timeScale`) and only releases stones when a hover is ready.
+  - ✅ Scheduler pauses during loss / placing phases and resumes automatically once the tower is stable again.
+- [ ] **Live Shape Modulation**
+  - Stream mock “live” price deltas during hover and feed them into `generateStoneShape` adjustments (convexity/jaggedness/baseBias).
+  - Render deformation updates in `game-canvas.tsx` with smooth lerps so the preview advertises risk.
+- [ ] **Player Decisions**
+  - Surface flip/discard controls specifically for the hover stone, with decision deadlines tied to `DEFAULT_CONFIG.decisionWindow`.
+  - Persist the user’s final stance (long/short/flat) for later loss calculations.
+- [x] **Stack Viewport Management**
+  - ✅ Pre-seed tower bodies and recycle offsets so the visible stack height stays constant.
+  - ✅ Eased `towerOffset` transitions keep scroll adjustments smooth when stones are added or fall.
+- [ ] **Loss Event Refresh**
+  - When losses trigger, activate physics for the top N stones and inject replacements from the bottom pool to maintain tower height.
+  - Sync audio and UI feedback with the number of stones lost and regenerated.
+
+> _Next step_: Spike the `hoverStone` state machine and cadence controller, then loop back here to tick the first two boxes.
