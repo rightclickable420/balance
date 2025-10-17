@@ -3,6 +3,7 @@ import type { Candle } from "../types"
 import type { Stone } from "./physics-engine"
 
 export type GamePhase = "waiting" | "hovering" | "placing" | "stable" | "loss" | "settled"
+export type Stance = "long" | "short" | "flat"
 
 export interface GameState {
   // Game status
@@ -25,6 +26,7 @@ export interface GameState {
 
   debugMode: boolean
   timeScale: number
+  hoverStance: Stance
 
   // Actions
   setPhase: (phase: GamePhase) => void
@@ -42,6 +44,7 @@ export interface GameState {
   setPlacementProgress: (progress: number) => void
   setDebugMode: (debug: boolean) => void
   setTimeScale: (scale: number) => void
+  setHoverStance: (stance: Stance) => void
   reset: () => void
 }
 
@@ -61,6 +64,7 @@ export const useGameState = create<GameState>((set) => ({
   placementProgress: 0,
   debugMode: true,
   timeScale: 1,
+  hoverStance: "long",
 
   // Actions
   setPhase: (phase) => set({ phase }),
@@ -81,6 +85,7 @@ export const useGameState = create<GameState>((set) => ({
   setPlacementProgress: (placementProgress) => set({ placementProgress }),
   setDebugMode: (debugMode) => set({ debugMode }),
   setTimeScale: (timeScale) => set({ timeScale }),
+  setHoverStance: (hoverStance) => set({ hoverStance }),
   reset: () =>
     set({
       phase: "waiting",
@@ -97,5 +102,6 @@ export const useGameState = create<GameState>((set) => ({
       placementProgress: 0,
       debugMode: false,
       timeScale: 1,
+      hoverStance: "long",
     }),
 }))

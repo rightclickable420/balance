@@ -203,25 +203,39 @@ rm -rf .next
 
 **Project Status**: ✅ **Production Ready** | **Last Updated**: October 2025 | **Version**: 1.0.0
 
-## 🗺️ Roadmap — Hover Stones & Live Market Sync
+## 🗺️ Roadmap — Market-Synced Hover Stack
 
-- [x] **Hover Stone Lifecycle**
-  - ✅ `hoverStone` state (`GameContainer`) now preloads the next stone as soon as the previous placement settles.
-  - ✅ Hover stones remain suspended above the stack until the cadence tick fires.
-- [x] **Cadence Controller**
-  - ✅ Timer aligns drops to fixed cadence slots (respects `timeScale`) and only releases stones when a hover is ready.
-  - ✅ Scheduler pauses during loss / placing phases and resumes automatically once the tower is stable again.
-- [ ] **Live Shape Modulation**
-  - Stream mock “live” price deltas during hover and feed them into `generateStoneShape` adjustments (convexity/jaggedness/baseBias).
-  - Render deformation updates in `game-canvas.tsx` with smooth lerps so the preview advertises risk.
-- [ ] **Player Decisions**
-  - Surface flip/discard controls specifically for the hover stone, with decision deadlines tied to `DEFAULT_CONFIG.decisionWindow`.
-  - Persist the user’s final stance (long/short/flat) for later loss calculations.
-- [x] **Stack Viewport Management**
-  - ✅ Pre-seed tower bodies and recycle offsets so the visible stack height stays constant.
-  - ✅ Eased `towerOffset` transitions keep scroll adjustments smooth when stones are added or fall.
-- [ ] **Loss Event Refresh**
-  - When losses trigger, activate physics for the top N stones and inject replacements from the bottom pool to maintain tower height.
-  - Sync audio and UI feedback with the number of stones lost and regenerated.
+- [x] **Hover Stone Lifecycle** – preload the next stone as soon as the prior placement settles and keep it suspended until the cadence tick.
+- [x] **Live Shape Modulation** – regenerate hover vertices every ~120 ms from simulated intrahover signals while preserving the landing surface.
+- [x] **Cadence Controller** – maintain fixed drop cadence, pausing for placement/loss and resuming automatically once the tower is stable.
+- [x] **Stack Viewport Management** – pre-seed frozen stones, keep the visible stack height constant, and ease tower scrolling.
+- [x] **Player Decisions** – flip/discard inputs now operate during the decision window and stance (long/short/flat) is stored per stone.
+- [ ] **Feature-Driven Losses** – replace the sine alignment trigger with feature-based severity and wake physics only for the affected stones.
+- [ ] **River Rock Geometry & Palette** – migrate to HSL-driven color/shape generation so hover cues stay consistent with feature signals.
 
-> _Next step_: Spike the `hoverStone` state machine and cadence controller, then loop back here to tick the first two boxes.
+> _Next steps_
+
+### Align Stones With Market Features
+
+1. **Feature Extraction**  
+   Create `src/lib/data/features.ts` with a lightweight EMA state that outputs bounded signals (momentum, volatility, volume, breadth, order imbalance, regime). Collect helper math (`clamp`, `tanhSafe`, `lerp`) in `src/lib/game/math.ts` so hover modulation and mapping share utilities.
+2. **Feature → Visual Mapping**  
+   Introduce `src/lib/game/feature-mapper.ts` that converts `Features` into stone visuals (convexity, jaggedness, radius, aspect, baseBias, HSL color). Replace `candleToStone` once hover and placement both consume the mapper.
+3. **River-Rock Geometry**  
+   Swap `generateStoneShape` for a `makeRiverRock` helper that builds a smoothed ellipse, biases the base, and applies gentle noise. Reuse it during hover regeneration so live shape changes stay consistent.
+4. **Player Decisions**  
+   During the cadence decision window expose flip/discard (mouse, touch, keyboard). Lock stance after the window, animate descent, and store `stance` alongside stone geometry in the logical stack.
+5. **Loss Severity & Physics Wake**  
+   Implement `stonesToLose(features, stance, stackCount)` to decide how many top stones tumble when the chosen stance disagrees with features. Wake physics only for those stones for ~3 s, then rebuild the logical stack (either from resting bodies or cached geometry) before resuming cadence.
+6. **UI & Feedback**  
+   Update `game-ui.tsx` with a cadence selector (0.5 s → 60 s), stance indicator, and a visual countdown pulse. Let hover sway/bloom react to volatility; trigger tumble SFX and optional visual flash during losses.
+7. **Debug & Art Tweaks**  
+   Keep `L` for fast-forward, add a volatility exaggeration toggle, and render a compact feature strip (momentum/vol/volume/orderImb/regime) for qualitative tuning.
+
+### Acceptance Targets
+
+- Stones drop one per cadence; hover shape and color reflect feature-driven cues.
+- Player stance decisions persist and feed loss severity.
+- Physics stays idle except during loss events; tumble count matches severity and the stack recenters afterward.
+- River-rock silhouettes read cleanly across cadence speeds.
+- Feature extraction, mapping, and geometry helpers remain modular, pure, and ready for live data feeds.
