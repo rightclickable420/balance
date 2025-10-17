@@ -34,34 +34,45 @@ const smoothStroke = (points: Point[], passes = 2): Point[] => {
   return current
 }
 
+interface ShapeOptions {
+  facetStrength?: number
+  facetWidth?: number
+}
+
 /**
- * Generates a softened river-rock polygon using aspect ratio and stochastic noise.
+ * Generates a softened river-rock polygon using aspect ratio, flattening, and stochastic noise.
  */
-export function generateStoneShape(params: StoneParams): Point[] {
+export function generateStoneShape(params: StoneParams, options: ShapeOptions = {}): Point[] {
   const { convexity, jaggedness, baseBias, radius, aspect, seed } = params
+  const { facetStrength = 0.35, facetWidth = Math.PI / 5 } = options
   const rng = seededRandom(seed)
 
   const basePoints: Point[] = []
-  const segments = 24
-  const biasStrength = 0.18 * Math.abs(baseBias)
+  const segments = 28
+  const biasStrength = 0.16 * Math.abs(baseBias)
 
   for (let i = 0; i < segments; i++) {
     const t = (i / segments) * Math.PI * 2
     const sin = Math.sin(t)
     const cos = Math.cos(t)
 
-    const flatten = baseBias >= 0 ? Math.min(1, Math.max(0, sin + 1)) : Math.min(1, Math.max(0, -sin + 1))
-    const biasScale = 1 - biasStrength * flatten
+    const flatten = baseBias >= 0 ? Math.max(0, -sin) : Math.max(0, sin)
+    const biasScale = 1 - biasStrength * Math.pow(flatten, 1.5)
+
+    const angleDiff = Math.abs(Math.atan2(Math.sin(t), Math.cos(t)))
+    const facetWeight = Math.max(0, 1 - angleDiff / facetWidth)
+    const facetScale = 1 - facetStrength * facetWeight * facetWeight
 
     const ovalX = cos * radius * aspect
     const ovalY = sin * radius
 
-    const noise = (rng() - 0.5) * jaggedness * radius * 0.18
-    const ridge = Math.sin(t * 2) * (1 - convexity) * radius * 0.25
+    const noise = (rng() - 0.5) * jaggedness * radius * 0.12
+    const ridge = Math.sin(t * 2) * (1 - convexity) * radius * 0.18
 
-    const scale = biasScale + noise / Math.max(1, radius) + ridge / Math.max(1, radius)
+    const scaleBase = Math.max(0.55, biasScale * facetScale)
+    const scale = scaleBase + noise / Math.max(1, radius) + ridge / Math.max(1, radius)
 
-    basePoints.push({ x: ovalX * scale, y: ovalY * scale })
+    basePoints.push({ x: ovalX * scale, y: ovalY * (scale * 0.95) })
   }
 
   const smoothed = smoothStroke(basePoints, 2)
