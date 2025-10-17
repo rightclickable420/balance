@@ -17,7 +17,6 @@ interface GameCanvasProps {
     y: number
     color: string
     stance?: Stance
-    angle?: number
   } | null
   hoverCanDecide?: boolean
   decisionProgress?: number
@@ -27,7 +26,6 @@ interface GameCanvasProps {
     y: number
     color: string
     stance?: Stance
-    angle?: number
   } | null
 }
 
@@ -152,11 +150,10 @@ export function GameCanvas({
         y: number
         color: string
         stance?: Stance
-        angle?: number
       },
       options: { alpha?: number; highlight?: boolean; progress?: number } = {},
     ) => {
-      const { vertices, x, y, color, stance = "long", angle = 0 } = stone
+      const { vertices, x, y, color, stance = "long" } = stone
       const alpha = options.alpha ?? (stance === "flat" ? 0.35 : 0.95)
       const highlightActive = options.highlight ?? false
       const progress = clamp01(options.progress ?? 0)
@@ -218,7 +215,7 @@ export function GameCanvas({
       ctx.stroke()
       ctx.restore()
 
-      drawHighlight(x, y, radiusX, radiusY, angle)
+      drawHighlight(x, y, radiusX, radiusY, 0)
 
       if (highlightActive) {
         const pulse = 0.35 + 0.45 * (1 - progress)
