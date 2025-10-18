@@ -194,6 +194,37 @@ Balance is a minimalist trading game that turns live market data into a physical
 ### 🔭 The Vision
 Balance aims to be both a game and a training tool—a bridge between intuition and data. It should let people experience financial rhythm and emotional control without jargon or charts, turning markets into something you can literally balance with your hands and eyes.
 
+## 🚀 Execution Plan
+
+### 1. Wire Real Market Feeds
+- Integrate a live candle provider (Polygon, Alpaca, or TwelveData) via Vercel edge cron and hydrate the mock account with real ticks.
+- Persist candle history and account snapshots (KV, Supabase, or Planetscale) to survive reloads and enable leaderboard metrics.
+- Add graceful degradation: synthesize noise or reuse the last known candle when data stalls so the cadence never freezes.
+
+### 2. Polish Tower Dynamics
+- Track cumulative misalignment to animate subtle tower sway, camera parallax, and tension cues prior to a loss event.
+- Mix Matter.js springs into placement so the tower absorbs new mass smoothly without jitter.
+- Enrich impact feedback with particles, screen shake, and layered audio tied to severity.
+
+### 3. Elevate UX & Accessibility
+- Replace the debug overlay with a stance-focused HUD showing hotkeys, drop timers, and recent loss history.
+- Add gamepad mappings and screen-reader narration for stance changes, balance ticks, and loss triggers.
+- Ship color-blind-safe palettes and respect system dark/light preferences while preserving directional hue semantics.
+
+### 4. Build the Learning Layer
+- Attach plain-language tooltips and sparklines that explain each stone’s momentum, breadth, and volatility signals.
+- Capture session analytics (alignment duration, flip cadence, drawdowns) and present an end-of-run recap.
+- Introduce optional challenges—“stay aligned for 12 stones,” “survive a volatility spike”—to teach timing and conviction.
+
+### 5. Tackle Tech Debt & Performance
+- Break `GameContainer` into focused services (stone factory, stance manager, tower stabilizer) with unit coverage.
+- Add Jest/Vitest unit suites plus Playwright smoke tests for hover animation, loss cadence, and stance persistence.
+- Profile canvas rendering and experiment with offscreen canvases or WebGL instancing to keep frame time under 4 ms.
+
+### 6. Shareability & Community
+- Serialize candle+stance timelines into replay files and auto-generate GIF highlights for milestone towers.
+- Ship a sandbox mode that lets players tweak feature weights live, save presets, and share them with the community.
+
 ## 📚 Additional Resources
 
 - **Next.js Documentation**: https://nextjs.org/docs
