@@ -24,6 +24,8 @@ const DEFAULT_SNAPSHOT_SIZE = 5
 const SNAPSHOT_LOOKBACK_MULTIPLIER = 4
 const RECONNECT_DELAY_MS = 5_000
 const PING_INTERVAL_MS = 50_000
+const SNAPSHOT_RETRY_DELAY_MS = 30_000
+const RATE_LIMIT_LOG_INTERVAL_MS = 60_000
 
 const isBrowser = typeof window !== "undefined"
 
@@ -38,6 +40,7 @@ export class HyperliquidWebsocketSource implements CandleSource {
   private lastCandle: Candle | null = null
   private readonly source = "hyperliquid"
   private initializing = false
+  private lastRateLimitLog = 0
 
   constructor(options: HyperliquidWebsocketSourceOptions = {}) {
     this.symbol = (options.symbol ?? DEFAULT_SYMBOL).toUpperCase()
@@ -109,7 +112,7 @@ export class HyperliquidWebsocketSource implements CandleSource {
     const intervalMs = this.intervalToMs(this.interval)
     const startTime = endTime - intervalMs * this.snapshotSize * SNAPSHOT_LOOKBACK_MULTIPLIER
 
-    try {
+    const fetchSnapshotInner = async () => {
       const response = await fetch(HYPERLIQUID_REST_URL, {
         method: "POST",
         headers: {
@@ -127,7 +130,17 @@ export class HyperliquidWebsocketSource implements CandleSource {
       })
 
       if (!response.ok) {
-        throw new Error(`Snapshot request failed with status ${response.status}`)
+        if (response.status === 429) {
+          const now = Date.now()
+          if (now - this.lastRateLimitLog > RATE_LIMIT_LOG_INTERVAL_MS) {
+            console.warn("[HyperliquidWS] Snapshot rate-limited. Will retry.")
+            this.lastRateLimitLog = now
+          }
+        } else {
+          console.error(`[HyperliquidWS] Snapshot request failed with status ${response.status}`)
+        }
+        setTimeout(() => this.fetchSnapshot(), SNAPSHOT_RETRY_DELAY_MS)
+        return
       }
 
       const payload = (await response.json()) as HyperliquidWireCandle[]
@@ -138,8 +151,13 @@ export class HyperliquidWebsocketSource implements CandleSource {
         const recent = candles.slice(-this.snapshotSize)
         this.queue.push(...recent)
       }
+    }
+
+    try {
+      await fetchSnapshotInner()
     } catch (error) {
       console.error("[HyperliquidWS] Failed to fetch snapshot", error)
+      setTimeout(() => this.fetchSnapshot(), SNAPSHOT_RETRY_DELAY_MS)
     }
   }
 
@@ -171,7 +189,7 @@ export class HyperliquidWebsocketSource implements CandleSource {
     })
 
     this.socket.addEventListener("error", (event) => {
-      console.error("[HyperliquidWS] Websocket error", event)
+      console.warn("[HyperliquidWS] Websocket error", event)
       this.socket?.close()
     })
   }

@@ -70,7 +70,7 @@ export function GameUI() {
   const providerDisplay = (() => {
     const normalized = dataProvider?.toLowerCase() ?? "mock"
     if (normalized === "hyperliquid") return "Hyperliquid"
-    if (normalized === "polygon") return "Polygon"
+    if (normalized.startsWith("polygon")) return "Polygon"
     if (normalized === "default") return "Live"
     return "Mock Data"
   })()

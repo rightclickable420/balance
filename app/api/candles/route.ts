@@ -10,6 +10,14 @@ const hyperliquidEndpoint = "https://api.hyperliquid.xyz/info"
 const DEFAULT_PROVIDER = (process.env.BALANCE_DATA_PROVIDER ?? "polygon").toLowerCase()
 const RATE_LIMIT_LOG_INTERVAL_MS = 60_000
 let lastHyperliquidRateLimitLog = 0
+let lastPolygonRateLimitLog = 0
+
+type CandleCacheEntry = {
+  candles: Candle[]
+  fetchedAt: number
+}
+
+const polygonCache = new Map<string, CandleCacheEntry>()
 
 export const runtime = "edge"
 
@@ -34,12 +42,18 @@ export async function GET(request: Request) {
 
   if (provider === "polygon" || provider === "default" || provider === "hyperliquid") {
     try {
-      const candles = await fetchPolygonCandles(symbol, limit)
+      const candles = await fetchPolygonCandles(symbol, limit, true)
       if (candles.length > 0) {
         return NextResponse.json({ candles, source: "polygon" })
       }
     } catch (error) {
-      console.warn("[candles] Polygon fetch failed, falling back to mock data.", error)
+      console.warn("[candles] Polygon fetch failed, checking cache before falling back.", error)
+      const cacheKey = cacheKeyForPolygon(symbol, limit)
+      const cached = polygonCache.get(cacheKey)
+      if (cached?.candles?.length) {
+        return NextResponse.json({ candles: cached.candles, source: "polygon-cache" })
+      }
+      console.warn("[candles] Polygon cache empty; using mock data.")
     }
   }
 
@@ -47,7 +61,20 @@ export async function GET(request: Request) {
   return NextResponse.json({ candles: fallbackCandles, source: "mock" })
 }
 
-async function fetchPolygonCandles(symbol: string, limit: number): Promise<Candle[]> {
+function cacheKeyForPolygon(symbol: string, limit: number): string {
+  return `${symbol}:${limit}`
+}
+
+async function fetchPolygonCandles(symbol: string, limit: number, useCache = false): Promise<Candle[]> {
+  const cacheKey = cacheKeyForPolygon(symbol, limit)
+  if (useCache) {
+    const cached = polygonCache.get(cacheKey)
+    const now = Date.now()
+    if (cached && now - cached.fetchedAt < 55_000 && cached.candles.length > 0) {
+      return cached.candles
+    }
+  }
+
   const apiKey = process.env.POLYGON_API_KEY
   if (!apiKey) {
     return []
@@ -63,6 +90,13 @@ async function fetchPolygonCandles(symbol: string, limit: number): Promise<Candl
 
   const response = await fetch(url, { cache: "no-store" })
   if (!response.ok) {
+    if (response.status === 429) {
+      const now = Date.now()
+      if (now - lastPolygonRateLimitLog > RATE_LIMIT_LOG_INTERVAL_MS) {
+        console.warn("[candles] Polygon rate limited request. Using cache/fallback.")
+        lastPolygonRateLimitLog = now
+      }
+    }
     throw new Error(`Polygon API returned ${response.status}`)
   }
 
@@ -78,7 +112,7 @@ async function fetchPolygonCandles(symbol: string, limit: number): Promise<Candl
   }
 
   const results = payload.results ?? []
-  return results
+  const candles = results
     .filter((entry) => Number.isFinite(entry.t))
     .map((entry) => ({
       timestamp: entry.t,
@@ -90,6 +124,12 @@ async function fetchPolygonCandles(symbol: string, limit: number): Promise<Candl
     }))
     .sort((a, b) => a.timestamp - b.timestamp)
     .slice(-limit)
+
+  if (useCache && candles.length > 0) {
+    polygonCache.set(cacheKey, { candles, fetchedAt: Date.now() })
+  }
+
+  return candles
 }
 
 async function fetchHyperliquidCandles(symbol: string, limit: number): Promise<Candle[]> {
