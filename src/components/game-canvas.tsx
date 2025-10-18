@@ -100,6 +100,10 @@ export function GameCanvas({
       bodyY: number,
       angle: number,
     ) => {
+      if (!Number.isFinite(bodyX) || !Number.isFinite(bodyY) || !Number.isFinite(angle)) {
+        return
+      }
+
       ctx.beginPath()
       const cos = Math.cos(angle)
       const sin = Math.sin(angle)
@@ -121,6 +125,10 @@ export function GameCanvas({
     for (const stone of stones) {
       const { body, vertices, color } = stone
       const { radiusY } = getLocalExtents(vertices)
+
+      if (!Number.isFinite(body.position.x) || !Number.isFinite(body.position.y) || !Number.isFinite(radiusY)) {
+        continue
+      }
 
       const gradient = ctx.createLinearGradient(
         body.position.x,
@@ -184,6 +192,10 @@ export function GameCanvas({
           : stance === "short"
             ? adjustHex(color, 0.9)
             : color
+
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radiusY)) {
+        return
+      }
 
       const gradient = ctx.createLinearGradient(x, y - radiusY, x, y + radiusY)
       gradient.addColorStop(0, adjustHex(baseColor, 1.12))
