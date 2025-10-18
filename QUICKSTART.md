@@ -82,8 +82,8 @@ npm run lint      # Run ESLint
 
 ## 🎯 Current Snapshot
 
-- **Playable demo** running entirely client-side with a deterministic mock candle feed (no live market connectivity yet).
-- **Hover stone morphing** smoothly transitions geometry, color, and stance alignment when new candles stream in.
+- **Live Hyperliquid data** delivered through the native websocket stream (mock data remains as an automatic fallback).
+- **Hover stone morphing** smoothly transitions geometry, color, and stance alignment when new candles arrive.
 - **Loss events** fire in any phase: persistent misalignment kicks the tower, applies a mock account penalty, and restacks the tower from the physics world.
 - **Mock account ledger** tracks balance, realized PnL, and equity based on the active stance and incoming candles.
 - **Stance persistence** mirrors trader behavior—long, short, or flat carry forward until the player flips or discards.
@@ -145,6 +145,15 @@ Create a `.env.local` with any of the following (all optional):
 | `BALANCE_DATA_PROVIDER` | Server-side provider selection (`polygon`, `hyperliquid`, or `mock`). `hyperliquid` uses the native websocket stream. Defaults to `polygon`. |
 | `NEXT_PUBLIC_BALANCE_DATA_PROVIDER` | Client hint for choosing the provider (`polygon`, `hyperliquid`, or `mock`). |
 | `NEXT_PUBLIC_POLYGON_API_KEY` | Required for Polygon WebSocket authentication (exposed client-side). |
+
+## ⚠️ Known Issues & Open Tasks
+
+- **Over-eager loss physics**: full-stack tumbling still triggers on many loss events. Only the top few stones should drop (unless fully liquidated), they should fall out of view, and ideally disappear with a brief loss indicator.
+- **Rotation drift**: successive stones gradually rotate vertical. Newly spawned stones need their center of mass re-normalised so they stay horizontal unless deliberately tilted.
+- **Tower sway**: add a subtle data-driven sway deformation to visualise underlying stream tension.
+- **Imminent-loss tremor**: when the hover stone misaligns with the market, the top of the stack should briefly tremble as a warning.
+- **Placement settling**: placed stones should “seat” themselves using gentle physics—correct stance locks in smoothly, bad stance lets stones slide off.
+- **Strength stabiliser**: introduce an opposite effect to sway/tremor—when the user is well aligned, the stack tightens and calms.
 
 ## 🎨 Design System
 
