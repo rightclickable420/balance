@@ -37,7 +37,7 @@ export class MockCandleSource implements CandleSource {
   }
 
   private generateCandle(index: number): Candle {
-    const timestamp = Date.now() + index * 60000 // 1min candles
+    const timestamp = Date.now() + index * 1000 // 1 second candles
 
     // Random walk with mean reversion
     const drift = (100 - this.lastClose) * 0.01 // pull toward 100

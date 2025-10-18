@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { useGameState, type Stance } from "@/lib/game/game-state"
+import { useAccountState } from "@/lib/game/account-state"
 import type { Features } from "@/lib/data/features"
 
 const stanceLabels: Record<Stance, string> = {
@@ -45,6 +46,9 @@ const featureDescriptors: Array<{ key: keyof Features; label: string; variant: "
 
 export function GameUI() {
   const { stonesPlaced, canDecide, phase, hoverStance, latestFeatures, decisionProgress } = useGameState()
+  const balance = useAccountState((state) => state.balance)
+  const realizedPnl = useAccountState((state) => state.realizedPnl)
+  const equity = useAccountState((state) => state.equity)
 
   console.log(
     `[v0] GameUI render - stones: ${stonesPlaced}, phase: ${phase}, canDecide: ${canDecide}, stance: ${hoverStance}`,
@@ -66,38 +70,58 @@ export function GameUI() {
 
   return (
     <div className="pointer-events-none">
-      <div className="absolute top-4 left-4 right-4 flex items-start justify-between">
-      {/* Score display */}
-      <div className="bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border">
-        <div className="text-xs text-muted-foreground uppercase tracking-wide">Stones</div>
-        <div className="text-2xl font-bold text-foreground tabular-nums">{stonesPlaced}</div>
-      </div>
+      <div className="absolute top-4 left-4 right-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-3">
+          <div className="w-44">
+            {phase === "hovering" && (
+              <div className="bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border text-right">
+                <div className="text-xs text-muted-foreground uppercase tracking-wide">Stance</div>
+                <div className={`text-sm font-semibold ${stanceAccent[hoverStance]}`}>{stanceLabels[hoverStance]}</div>
+                <div className="mt-1 h-1 w-full rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-100 ease-out ${
+                      canDecide ? "bg-accent" : "bg-muted-foreground/40"
+                    }`}
+                    style={{ width: `${progressWidth * 100}%` }}
+                  />
+                </div>
+                <div
+                  className={`mt-1 text-[11px] uppercase tracking-wide ${
+                    canDecide ? "text-accent" : "text-muted-foreground"
+                  }`}
+                >
+                  {canDecide ? "Decision Window" : "Locked"}
+                </div>
+              </div>
+            )}
+          </div>
 
-      {/* Decision indicator */}
-      <div className="flex flex-col items-end gap-2">
-        {phase === "hovering" && (
-          <div className="bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border text-right w-44">
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">Stance</div>
-            <div className={`text-sm font-semibold ${stanceAccent[hoverStance]}`}>{stanceLabels[hoverStance]}</div>
-            <div className="mt-1 h-1 w-full rounded-full bg-white/10 overflow-hidden">
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Balance</div>
+              <div className="text-2xl font-bold text-foreground tabular-nums">${balance.toFixed(2)}</div>
               <div
-                className={`h-full rounded-full transition-all duration-100 ease-out ${
-                  canDecide ? "bg-accent" : "bg-muted-foreground/40"
+                className={`text-[11px] uppercase tracking-wide ${
+                  realizedPnl >= 0 ? "text-emerald-300" : "text-rose-300"
                 }`}
-                style={{ width: `${progressWidth * 100}%` }}
-              />
+              >
+                {realizedPnl >= 0 ? "+" : ""}
+                {realizedPnl.toFixed(2)} pnl
+              </div>
             </div>
-            <div className={`mt-1 text-[11px] uppercase tracking-wide ${canDecide ? "text-accent" : "text-muted-foreground"}`}>
-              {canDecide ? "Decision Window" : "Locked"}
+            <div className="bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border">
+              <div className="text-xs text-muted-foreground uppercase tracking-wide">Equity</div>
+              <div className="text-2xl font-bold text-foreground tabular-nums">${equity.toFixed(2)}</div>
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Stones {stonesPlaced}</div>
             </div>
           </div>
-        )}
+        </div>
+
         {phase === "placing" && (
           <div className="bg-card/60 backdrop-blur-sm px-4 py-1.5 rounded-lg border border-border text-xs text-muted-foreground uppercase tracking-wide">
             Dropping
           </div>
         )}
-      </div>
       </div>
 
       {latestFeatures && (

@@ -11,6 +11,7 @@ export interface Stone {
   color: string
   isFlipped: boolean
   createdAt: number
+  topAngle: number
 }
 
 /**
@@ -41,7 +42,7 @@ export class PhysicsEngine {
   /**
    * Add a stone to the physics world
    */
-  addStone(vertices: Point[], params: StoneParams, x: number, y: number, color: string): Stone {
+  addStone(vertices: Point[], params: StoneParams, x: number, y: number, color: string, topAngle?: number): Stone {
     // Convert vertices to Matter.js format
     const matterVertices = vertices.map((v) => ({ x: v.x, y: v.y }))
 
@@ -69,6 +70,7 @@ export class PhysicsEngine {
       color,
       isFlipped: false,
       createdAt: Date.now(),
+      topAngle: topAngle ?? body.angle,
     }
 
     this.stones.set(body.id, stone)
@@ -89,6 +91,7 @@ export class PhysicsEngine {
   flipStone(stone: Stone): void {
     Matter.Body.rotate(stone.body, Math.PI)
     stone.isFlipped = !stone.isFlipped
+    stone.topAngle = (stone.topAngle + Math.PI) % (Math.PI * 2)
   }
 
   /**
@@ -140,7 +143,11 @@ export class PhysicsEngine {
   getTowerHeight(): number {
     let maxHeight = 0
     for (const stone of this.stones.values()) {
-      const stoneTop = stone.body.position.y - stone.params.radius
+      let minLocalY = Infinity
+      for (const vertex of stone.vertices) {
+        if (vertex.y < minLocalY) minLocalY = vertex.y
+      }
+      const stoneTop = stone.body.position.y + minLocalY
       maxHeight = Math.max(maxHeight, -stoneTop) // Negative because y increases downward
     }
     return maxHeight

@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useRef, useEffect } from "react"
-import type { PhysicsEngine } from "@/lib/game/physics-engine"
+import type { PhysicsEngine, Stone } from "@/lib/game/physics-engine"
 import { getStoneOutlineColor } from "@/lib/game/stone-color"
 import { useGameState, type Stance } from "@/lib/game/game-state"
 
@@ -18,6 +18,7 @@ interface GameCanvasProps {
     color: string
     stance?: Stance
     angle?: number
+    highlightAngle?: number
   } | null
   hoverCanDecide?: boolean
   decisionProgress?: number
@@ -28,6 +29,7 @@ interface GameCanvasProps {
     color: string
     stance?: Stance
     angle?: number
+    highlightAngle?: number
   } | null
 }
 
@@ -40,6 +42,26 @@ const adjustHex = (hex: string, factor: number) => {
   const g = Math.max(0, Math.min(255, Math.round(parseInt(normalized.slice(2, 4), 16) * factor)))
   const b = Math.max(0, Math.min(255, Math.round(parseInt(normalized.slice(4, 6), 16) * factor)))
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
+}
+
+const getLocalExtents = (vertices: { x: number; y: number }[]) => {
+  if (vertices.length === 0) {
+    return { radiusX: 0, radiusY: 0 }
+  }
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+  for (const vertex of vertices) {
+    if (vertex.x < minX) minX = vertex.x
+    if (vertex.x > maxX) maxX = vertex.x
+    if (vertex.y < minY) minY = vertex.y
+    if (vertex.y > maxY) maxY = vertex.y
+  }
+  return {
+    radiusX: (maxX - minX) / 2,
+    radiusY: (maxY - minY) / 2,
+  }
 }
 
 export function GameCanvas({
@@ -69,21 +91,8 @@ export function GameCanvas({
     ctx.translate(0, towerOffset)
 
     // Get stones from physics engine
-    const stones = engineRef.current?.getStones() || []
+    const stones: Stone[] = engineRef.current?.getStones() ?? []
 
-    const drawHighlight = (centerX: number, centerY: number, radiusX: number, radiusY: number, angle: number) => {
-      ctx.save()
-      ctx.translate(centerX, centerY)
-      ctx.rotate(angle)
-      ctx.beginPath()
-      ctx.ellipse(radiusX * -0.15, -radiusY * 0.45, radiusX * 0.55, radiusY * 0.22, 0, 0, Math.PI * 2)
-      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radiusX * 0.7)
-      gradient.addColorStop(0, "rgba(255,255,255,0.75)")
-      gradient.addColorStop(1, "rgba(255,255,255,0)")
-      ctx.fillStyle = gradient
-      ctx.fill()
-      ctx.restore()
-    }
 
     const traceBodyPath = (
       vertices: { x: number; y: number }[],
@@ -111,8 +120,7 @@ export function GameCanvas({
 
     for (const stone of stones) {
       const { body, vertices, color } = stone
-      const radiusX = stone.params.radius * stone.params.aspect
-      const radiusY = stone.params.radius
+      const { radiusY } = getLocalExtents(vertices)
 
       const gradient = ctx.createLinearGradient(
         body.position.x,
@@ -142,7 +150,7 @@ export function GameCanvas({
       ctx.stroke()
       ctx.restore()
 
-      drawHighlight(body.position.x, body.position.y, radiusX, radiusY, body.angle)
+      // highlight removed
     }
 
     const drawPreviewStone = (
@@ -153,25 +161,21 @@ export function GameCanvas({
         color: string
         stance?: Stance
         angle?: number
+        highlightAngle?: number
       },
       options: { alpha?: number; highlight?: boolean; progress?: number } = {},
     ) => {
-      const { vertices, x, y, color, stance = "long", angle = 0 } = stone
+      const { vertices, x, y, color, stance = "long" } = stone
       const alpha = options.alpha ?? (stance === "flat" ? 0.35 : 0.95)
       const highlightActive = options.highlight ?? false
       const progress = clamp01(options.progress ?? 0)
 
-      let minX = Infinity
-      let maxX = -Infinity
       let minY = Infinity
       let maxY = -Infinity
       for (const vertex of vertices) {
-        if (vertex.x < minX) minX = vertex.x
-        if (vertex.x > maxX) maxX = vertex.x
         if (vertex.y < minY) minY = vertex.y
         if (vertex.y > maxY) maxY = vertex.y
       }
-      const radiusX = (maxX - minX) / 2
       const radiusY = (maxY - minY) / 2
 
       const baseColor =
@@ -218,7 +222,6 @@ export function GameCanvas({
       ctx.stroke()
       ctx.restore()
 
-      drawHighlight(x, y, radiusX, radiusY, angle)
 
       if (highlightActive) {
         const pulse = 0.35 + 0.45 * (1 - progress)

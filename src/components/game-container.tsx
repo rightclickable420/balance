@@ -4,11 +4,18 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { GameCanvas } from "./game-canvas"
 import { PhysicsEngine } from "@/lib/game/physics-engine"
 import { MockCandleSource } from "@/lib/data/mock-candle-source"
-import { generateStoneShape, normalizePoints, type Point } from "@/lib/game/stone-generator"
+import {
+  makeTrapezoidFromAngles,
+  rotatePoint,
+  rotatePoints as rotatePointsImmediate,
+  type Point,
+  type TrapezoidMetrics,
+} from "@/lib/game/stone-generator"
 import { DEFAULT_CONFIG } from "@/lib/config"
 import { useGameState, type Stance } from "@/lib/game/game-state"
+import { useAccountState } from "@/lib/game/account-state"
 import { initFeatureState, computeFeatures, type Features } from "@/lib/data/features"
-import { featuresToStoneVisual } from "@/lib/game/feature-mapper"
+import { featuresToStoneVisual, type StoneGeometryInput } from "@/lib/game/feature-mapper"
 import { stonesToLose } from "@/lib/game/loss"
 import { AudioManager } from "@/lib/audio/audio-manager"
 import type { Candle, StoneParams } from "@/lib/types"
@@ -22,17 +29,88 @@ const HOVER_VERTICAL_OFFSET = 120
 const STACK_GAP = -4
 const INITIAL_STACK_COUNT = 10
 const DESIRED_TOP_SCREEN_Y = 240
+const STONE_CANDLE_WINDOW = 30
+const CANDLE_INTERVAL_MS = 1000
+const HOVER_TRANSITION_DURATION_MS = 650
+const MAX_DIRECTIONAL_OFFSET = Math.PI / 6 // 30 degrees
+const MAX_TOWER_TILT = Math.PI / 4 // 45 degrees
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+const clampDirectionalOffset = (offset: number) => clamp(offset, -MAX_DIRECTIONAL_OFFSET, MAX_DIRECTIONAL_OFFSET)
+const lerpScalar = (a: number, b: number, t: number) => a + (b - a) * t
+const lerpAngle = (from: number, to: number, t: number) => {
+  let diff = to - from
+  while (diff > Math.PI) diff -= Math.PI * 2
+  while (diff < -Math.PI) diff += Math.PI * 2
+  return from + diff * t
+}
+const normalizeAngle = (angle: number) => {
+  let result = angle % (Math.PI * 2)
+  if (result > Math.PI) result -= Math.PI * 2
+  if (result < -Math.PI) result += Math.PI * 2
+  return result
+}
+const clampTowerTilt = (angle: number) => clamp(normalizeAngle(angle), -MAX_TOWER_TILT, MAX_TOWER_TILT)
+const resolveBaseOrientation = (prevTopAngle: number, desiredOffset: number) => {
+  const clampedOffset = clampDirectionalOffset(desiredOffset)
+  const baseOrientation = clampTowerTilt(prevTopAngle + clampedOffset)
+  const appliedOffset = normalizeAngle(baseOrientation - prevTopAngle)
+  return { baseOrientation, appliedOffset }
+}
+const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2)
+const hexToRgb = (hex: string): [number, number, number] => {
+  const normalized = hex.replace("#", "")
+  const value = normalized.length === 6 ? normalized : normalized.padEnd(6, "0")
+  const r = parseInt(value.slice(0, 2), 16)
+  const g = parseInt(value.slice(2, 4), 16)
+  const b = parseInt(value.slice(4, 6), 16)
+  return [r, g, b]
+}
+const rgbToHex = (r: number, g: number, b: number): string =>
+  `#${Math.round(r).toString(16).padStart(2, "0")}${Math.round(g).toString(16).padStart(2, "0")}${Math.round(b).toString(16).padStart(2, "0")}`
+const lerpColor = (from: string, to: string, t: number): string => {
+  const [r1, g1, b1] = hexToRgb(from)
+  const [r2, g2, b2] = hexToRgb(to)
+  return rgbToHex(lerpScalar(r1, r2, t), lerpScalar(g1, g2, t), lerpScalar(b1, b2, t))
+}
 
 type StoneBounds = {
   minY: number
   maxY: number
 }
 
+const orientVertices = (local: Point[], angle: number): Point[] => rotatePointsImmediate(local, angle)
+
+const deriveWorldMetrics = (metrics: TrapezoidMetrics, angle: number): StoneWorldMetrics => ({
+  bottomMid: rotatePoint(metrics.bottomMidLocal, angle),
+  topMid: rotatePoint(metrics.topMidLocal, angle),
+  bottomAngle: metrics.bottomAngleLocal + angle,
+  topAngle: metrics.topAngleLocal + angle,
+  bottomWidth: metrics.bottomWidth,
+  topWidth: metrics.topWidth,
+  heightLocal: metrics.heightLocal,
+})
+
+type StoneWorldMetrics = {
+  bottomMid: Point
+  topMid: Point
+  bottomAngle: number
+  topAngle: number
+  bottomWidth: number
+  topWidth: number
+  heightLocal: number
+}
+
 type HoverStone = {
-  baseVertices: Point[]
-  vertices: { x: number; y: number }[]
+  localVertices: Point[]
+  vertices: Point[]
+  metricsLocal: TrapezoidMetrics
+  metricsWorld: StoneWorldMetrics
+  geometry: StoneGeometryInput
+  strength: number
+  baseOrientation: number
+  updatesApplied: number
+  maxUpdates: number
   x: number
   y: number
   color: string
@@ -40,17 +118,53 @@ type HoverStone = {
   params: StoneParams
   candle: Candle
   bounds: StoneBounds
-  baseParams: StoneParams
   spawnedAt: number
   stance: Stance
   features: Features
 
   angle: number
+  angleLong: number
+  angleShort: number
+  prevTopAngle: number
+  highlightAngle: number
   facetStrength: number
 }
 
 type PlacingStone = HoverStone & {
   startY: number
+}
+
+type HoverTransitionSnapshot = {
+  geometry: StoneGeometryInput
+  strength: number
+  baseOrientation: number
+  color: string
+  facetStrength: number
+  angle: number
+  angleLong: number
+  angleShort: number
+  y: number
+  prevTopAngle: number
+  stance: Stance
+}
+
+type HoverTransitionTarget = {
+  geometry: StoneGeometryInput
+  strength: number
+  color: string
+  facetStrength: number
+  params: StoneParams
+  candle: Candle
+  features: Features
+  directionalOffset: number
+}
+
+type HoverTransition = {
+  from: HoverTransitionSnapshot
+  target: HoverTransitionTarget
+  landingSurface: number
+  elapsed: number
+  duration: number
 }
 
 const DEFAULT_STANCE: Stance = "long"
@@ -77,6 +191,7 @@ export function GameContainer() {
   const featureStateRef = useRef(initFeatureState())
   const lastFeaturesRef = useRef<Features | null>(null)
   const lastTopAngleRef = useRef<number>(0)
+  const hoverTransitionRef = useRef<HoverTransition | null>(null)
 
   const [renderTrigger, setRenderTrigger] = useState(0)
   const [testCounter, setTestCounter] = useState(0)
@@ -144,30 +259,6 @@ export function GameContainer() {
     setDecisionProgress,
   } = useGameState()
 
-  const getHoverModulatedParams = useCallback(
-    (baseParams: StoneParams, elapsedMs: number, alignment: number): StoneParams => {
-      const t = elapsedMs / 700
-      const wave = Math.sin(t)
-      const pulse = Math.sin(elapsedMs / 220 + baseParams.seed * 0.01)
-      const volatility = clamp(0.5 + 0.3 * wave + 0.2 * pulse, 0, 1)
-      const biasShift = alignment * 0.5
-
-      const convexity = clamp(baseParams.convexity - volatility * 0.3, 0.1, 1)
-      const jaggedness = clamp(baseParams.jaggedness + volatility * 0.4, 0, 1)
-      const radiusScale = clamp(1 + (volatility - 0.5) * 0.15, 0.85, 1.15)
-      const baseBias = clamp(baseParams.baseBias + biasShift + (volatility - 0.5) * 0.6, -1, 1)
-
-      return {
-        ...baseParams,
-        convexity,
-        jaggedness,
-        baseBias,
-        radius: clamp(baseParams.radius * radiusScale, 30, 70),
-      }
-    },
-    [],
-  )
-
   const isDecisionActive = useCallback(() => {
     return useGameState.getState().phase === "hovering"
   }, [])
@@ -192,22 +283,44 @@ export function GameContainer() {
     return { minY, maxY }
   }, [])
 
-  const computeVisualFromCandle = useCallback((candle: Candle) => {
+  const cloneHoverSnapshot = useCallback((stone: HoverStone): HoverTransitionSnapshot => {
+    return {
+      geometry: { ...stone.geometry },
+      strength: stone.strength,
+      baseOrientation: stone.baseOrientation,
+      color: stone.color,
+      facetStrength: stone.facetStrength,
+      angle: stone.angle,
+      angleLong: stone.angleLong,
+      angleShort: stone.angleShort,
+      y: stone.y,
+      prevTopAngle: stone.prevTopAngle,
+      stance: stone.stance,
+    }
+  }, [])
+
+  const consumeNextCandleVisual = useCallback(() => {
+    const candle = candleSourceRef.current.next()
     const { features, state } = computeFeatures(featureStateRef.current, candle)
     featureStateRef.current = state
     lastFeaturesRef.current = features
-    const { params, color, facetStrength } = featuresToStoneVisual(features, candle.timestamp)
-    return { params, color, features, facetStrength }
+    const { params, color, facetStrength, geometry, strength } = featuresToStoneVisual(features, candle.timestamp)
+    return { candle, params, color, features, facetStrength, geometry, strength }
   }, [])
 
-  const rotatePoints = useCallback((points: Point[], angle: number): Point[] => {
-    const cos = Math.cos(angle)
-    const sin = Math.sin(angle)
-    return points.map((point) => ({
-      x: point.x * cos - point.y * sin,
-      y: point.x * sin + point.y * cos,
-    }))
-  }, [])
+  const consumeCandleWindow = useCallback(
+    (count: number) => {
+      let visual: ReturnType<typeof consumeNextCandleVisual> | null = null
+      for (let i = 0; i < count; i++) {
+        visual = consumeNextCandleVisual()
+      }
+      if (!visual) {
+        throw new Error("Failed to consume candle window")
+      }
+      return visual
+    },
+    [consumeNextCandleVisual],
+  )
 
   const handleFlip = useCallback(() => {
     const hover = hoverStoneRef.current
@@ -215,8 +328,9 @@ export function GameContainer() {
     if (!isDecisionActive()) return
 
     const nextStance: Stance = hover.stance === "short" ? "long" : "short"
-    const nextAngle = hover.angle + Math.PI
-    const rotated = rotatePoints(hover.baseVertices, nextAngle)
+    const nextAngle = nextStance === "short" ? hover.angleShort : hover.angleLong
+    const rotated = orientVertices(hover.localVertices, nextAngle)
+    const metricsWorld = deriveWorldMetrics(hover.metricsLocal, nextAngle)
     const bounds = computeBounds(rotated)
     const landingSurface = stackSurfaceYRef.current
     const targetY = landingSurface - bounds.maxY
@@ -226,15 +340,27 @@ export function GameContainer() {
       ...hover,
       stance: nextStance,
       angle: nextAngle,
+      angleLong: hover.angleLong,
+      angleShort: hover.angleShort,
       vertices: rotated,
+      metricsWorld,
       bounds,
       targetY,
       y: hoverY,
+      highlightAngle: metricsWorld.topAngle,
     }
 
     setHoverStone(updated)
     setHoverStance(nextStance)
-  }, [computeBounds, isDecisionActive, rotatePoints, setHoverStance, setHoverStone])
+
+    if (hoverTransitionRef.current) {
+      hoverTransitionRef.current = {
+        ...hoverTransitionRef.current,
+        from: cloneHoverSnapshot(updated),
+        elapsed: 0,
+      }
+    }
+  }, [cloneHoverSnapshot, computeBounds, isDecisionActive, setHoverStance, setHoverStone])
 
   const handleDiscard = useCallback(() => {
     const hover = hoverStoneRef.current
@@ -266,7 +392,6 @@ export function GameContainer() {
     }
 
     let top = Infinity
-    let topAngle = 0
     for (const stone of stones) {
       let minY = Infinity
       for (const vertex of stone.vertices) {
@@ -275,13 +400,12 @@ export function GameContainer() {
       const stoneTop = stone.body.position.y + minY
       if (stoneTop < top) {
         top = stoneTop
-        topAngle = stone.body.angle
       }
     }
 
     stackTopYRef.current = top
     stackSurfaceYRef.current = top - STACK_GAP
-    lastTopAngleRef.current = topAngle
+    lastTopAngleRef.current = 0
     syncTowerOffset()
   }, [syncTowerOffset])
 
@@ -289,32 +413,52 @@ export function GameContainer() {
     const engine = engineRef.current
     if (!engine) return
 
+    const accountStore = useAccountState.getState()
+    accountStore.reset()
+
     let surface = GROUND_Y
     let top = surface
+    let prevTopAngle = 0
 
     for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
-      const candle = candleSourceRef.current.next()
-      const { params, color } = computeVisualFromCandle(candle)
-      const vertices = normalizePoints(generateStoneShape(params))
+      const visual = consumeCandleWindow(STONE_CANDLE_WINDOW)
+      const trapezoid = makeTrapezoidFromAngles({
+        widthBottom: visual.geometry.widthBottom,
+        height: visual.geometry.height,
+        taper: visual.geometry.taper,
+        round: visual.geometry.round,
+        betaGlobal: prevTopAngle + visual.geometry.beta,
+        tauGlobal: prevTopAngle + visual.geometry.tau,
+        prevTopAngleGlobal: prevTopAngle,
+        segments: 5,
+      })
+
+      const localVertices = trapezoid.local
+      const { baseOrientation } = resolveBaseOrientation(prevTopAngle, visual.geometry.beta)
+      const angleLong = baseOrientation - trapezoid.metrics.bottomAngleLocal
+      const vertices = orientVertices(localVertices, angleLong)
+      const metricsWorld = deriveWorldMetrics(trapezoid.metrics, angleLong)
+      const highlightAngle = clampTowerTilt(metricsWorld.topAngle)
       const bounds = computeBounds(vertices)
 
       const targetY = surface - bounds.maxY
 
-      engine.addStone(vertices, params, CANVAS_WIDTH / 2, targetY, color)
+      engine.addStone(vertices, visual.params, CANVAS_WIDTH / 2, targetY, visual.color, highlightAngle)
 
       top = targetY + bounds.minY
       surface = top - STACK_GAP
+      prevTopAngle = highlightAngle
 
       stoneSequenceRef.current += 1
     }
 
     stackTopYRef.current = top
     stackSurfaceYRef.current = surface
-    lastTopAngleRef.current = 0
+    lastTopAngleRef.current = prevTopAngle
 
     useGameState.setState({ stonesPlaced: INITIAL_STACK_COUNT, phase: "stable" })
     syncTowerOffset()
-  }, [computeBounds, computeVisualFromCandle, syncTowerOffset])
+  }, [computeBounds, consumeCandleWindow, syncTowerOffset])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -388,48 +532,161 @@ export function GameContainer() {
           const newAlignment = Math.sin(marketAlignmentTimeRef.current * 0.1) * 0.5
           setMarketAlignment(newAlignment)
 
-          if (currentPhase === "stable" && currentStonesPlaced > 0) {
-            const latestFeatures = lastFeaturesRef.current
-            if (latestFeatures) {
-              const pendingStance = placingStoneRef.current?.stance ?? hoverStoneRef.current?.stance ?? DEFAULT_STANCE
-              const loseCount = stonesToLose(latestFeatures, pendingStance, currentStonesPlaced)
-              if (loseCount > 0) {
-                triggerLossEvent(pendingStance, loseCount)
-              }
+          const latestFeatures = lastFeaturesRef.current
+          if (currentPhase !== "loss" && currentStonesPlaced > 0 && latestFeatures) {
+            const pendingStance = placingStoneRef.current?.stance ?? hoverStoneRef.current?.stance ?? DEFAULT_STANCE
+            const loseCount = stonesToLose(latestFeatures, pendingStance, currentStonesPlaced)
+            if (loseCount > 0) {
+              const momentumMag = Math.abs(latestFeatures.momentum)
+              const orderMag = Math.abs(latestFeatures.orderImbalance)
+              const volatilityMag = Math.max(0, latestFeatures.volatility)
+              const featureSeverity = clamp(momentumMag * 0.6 + orderMag * 0.3 + volatilityMag * 0.1, 0, 1)
+              const stackSeverity = clamp(loseCount / Math.max(currentStonesPlaced, 1), 0, 1)
+              const severity = clamp(featureSeverity * 0.75 + stackSeverity * 0.25, 0, 1)
+              triggerLossEvent(pendingStance, loseCount, severity)
             }
           }
 
           const activeHoverStone = hoverStoneRef.current
 
           if (currentPhase === "hovering" && activeHoverStone) {
-            if (now - hoverModulationTimerRef.current > 120) {
-              const elapsed = now - activeHoverStone.spawnedAt
-              const modulatedParams = getHoverModulatedParams(activeHoverStone.baseParams, elapsed, newAlignment)
-              const baseVertices = normalizePoints(
-                generateStoneShape(modulatedParams, { facetStrength: activeHoverStone.facetStrength }),
-              )
-              const rotatedVertices = rotatePoints(baseVertices, activeHoverStone.angle)
-              const modulatedBounds = computeBounds(rotatedVertices)
-              const landingSurface = stackSurfaceYRef.current
-              const modulatedTargetY = landingSurface - modulatedBounds.maxY
-              const hoverY = modulatedTargetY - HOVER_VERTICAL_OFFSET
-
-              setHoverStone((prev) => {
-                if (!prev) return prev
-                return {
-                  ...prev,
-                  params: modulatedParams,
-                  baseParams: modulatedParams,
-                  baseVertices,
-                  vertices: rotatedVertices,
-                  bounds: modulatedBounds,
-                  targetY: modulatedTargetY,
-                  y: hoverY,
-                }
-              })
-
+            const candleInterval = CANDLE_INTERVAL_MS / Math.max(0.1, currentTimeScale)
+            if (
+              now - hoverModulationTimerRef.current >= candleInterval &&
+              activeHoverStone.updatesApplied < activeHoverStone.maxUpdates
+            ) {
               hoverModulationTimerRef.current = now
+
+              const visual = consumeNextCandleVisual()
+              const landingSurface = stackSurfaceYRef.current
+              const desiredOffset = clampDirectionalOffset(visual.geometry.beta)
+              const stanceForAccount = activeHoverStone.stance
+              useAccountState.getState().registerCandle(visual.candle, stanceForAccount)
+
+              hoverTransitionRef.current = {
+                from: cloneHoverSnapshot(activeHoverStone),
+                target: {
+                  geometry: visual.geometry,
+                  strength: visual.strength,
+                  color: visual.color,
+                  facetStrength: visual.facetStrength,
+                  params: visual.params,
+                  candle: visual.candle,
+                  features: visual.features,
+                  directionalOffset: desiredOffset,
+                },
+                landingSurface,
+                elapsed: 0,
+                duration: HOVER_TRANSITION_DURATION_MS,
+              }
+
+              setHoverStone((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      params: visual.params,
+                      candle: visual.candle,
+                      features: visual.features,
+                      updatesApplied: Math.min(prev.updatesApplied + 1, prev.maxUpdates),
+                    }
+                  : prev,
+              )
+
+              setLatestFeatures(visual.features)
             }
+          }
+
+          const transition = hoverTransitionRef.current
+          const hoverForTransition = hoverStoneRef.current
+
+          if (currentPhase === "hovering" && transition && hoverForTransition) {
+            transition.elapsed = Math.min(transition.elapsed + deltaTime, transition.duration)
+            const progress =
+              transition.duration <= 0 ? 1 : Math.max(0, Math.min(1, transition.elapsed / transition.duration))
+            const eased = easeInOut(progress)
+            const { from, target, landingSurface } = transition
+
+            const geometry: StoneGeometryInput = {
+              widthBottom: lerpScalar(from.geometry.widthBottom, target.geometry.widthBottom, eased),
+              height: lerpScalar(from.geometry.height, target.geometry.height, eased),
+              taper: lerpScalar(from.geometry.taper, target.geometry.taper, eased),
+              round: lerpScalar(from.geometry.round, target.geometry.round, eased),
+              beta: lerpAngle(from.geometry.beta, target.geometry.beta, eased),
+              tau: lerpAngle(from.geometry.tau, target.geometry.tau, eased),
+            }
+
+            const trapezoid = makeTrapezoidFromAngles({
+              widthBottom: geometry.widthBottom,
+              height: geometry.height,
+              taper: geometry.taper,
+              round: geometry.round,
+              betaGlobal: from.prevTopAngle + geometry.beta,
+              tauGlobal: from.prevTopAngle + geometry.tau,
+              prevTopAngleGlobal: from.prevTopAngle,
+              segments: 5,
+            })
+
+            const fromDirectional = normalizeAngle(from.baseOrientation - from.prevTopAngle)
+            const targetOffset = clampDirectionalOffset(target.directionalOffset)
+            const blendedOffset = lerpAngle(fromDirectional, targetOffset, eased)
+            const { baseOrientation: targetBaseOrientation } = resolveBaseOrientation(from.prevTopAngle, blendedOffset)
+            const angleLongTarget = targetBaseOrientation - trapezoid.metrics.bottomAngleLocal
+            const angleLong = lerpAngle(from.angleLong, angleLongTarget, eased)
+            const angleShortTarget = angleLongTarget + Math.PI
+            const angleShort = lerpAngle(from.angleShort, angleShortTarget, eased)
+            const stance = hoverForTransition.stance
+            const startAngle = stance === "short" ? from.angleShort : from.angleLong
+            const desiredAngle = stance === "short" ? angleShortTarget : angleLongTarget
+            const angle = lerpAngle(startAngle, desiredAngle, eased)
+
+            const localVerts = trapezoid.local
+            const vertices = orientVertices(localVerts, angle)
+            const metricsWorld = deriveWorldMetrics(trapezoid.metrics, angle)
+            const highlightAngle = clampTowerTilt(metricsWorld.topAngle)
+            const metricsWorldAdjusted = { ...metricsWorld, topAngle: highlightAngle }
+            const bounds = computeBounds(vertices)
+            const targetY = landingSurface - bounds.maxY
+            const hoverY = targetY - HOVER_VERTICAL_OFFSET
+            const y = lerpScalar(from.y, hoverY, eased)
+
+            const strength = lerpScalar(from.strength, target.strength, eased)
+            const color = lerpColor(from.color, target.color, eased)
+            const facetStrength = lerpScalar(from.facetStrength, target.facetStrength, eased)
+            const baseOrientation = clampTowerTilt(angleLong + trapezoid.metrics.bottomAngleLocal)
+
+            setHoverStone((prev) => {
+              if (!prev) return prev
+              return {
+                ...prev,
+                localVertices: localVerts,
+                vertices,
+                metricsLocal: trapezoid.metrics,
+                metricsWorld: metricsWorldAdjusted,
+                geometry,
+                strength,
+                baseOrientation,
+                color,
+                targetY,
+                y,
+                params: target.params,
+                candle: target.candle,
+                bounds,
+                features: target.features,
+                angle,
+                angleLong,
+                angleShort,
+                highlightAngle,
+                facetStrength,
+              }
+            })
+
+            if (progress >= 1) {
+              hoverTransitionRef.current = null
+            }
+          } else if (!hoverForTransition) {
+            hoverTransitionRef.current = null
+          } else if (transition && currentPhase !== "hovering") {
+            hoverTransitionRef.current = null
           }
 
           const activePlacingStone = placingStoneRef.current
@@ -441,7 +698,7 @@ export function GameContainer() {
             setPlacementProgress(progress)
 
             // Easing function (ease-in-out)
-            const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2
+            const eased = easeInOut(progress)
 
             // Update placing stone position
             const currentY =
@@ -492,6 +749,7 @@ export function GameContainer() {
     decisionDeadlineRef.current = null
 
     setHoverStone(null)
+    hoverTransitionRef.current = null
 
     stoneSequenceRef.current += 1
     console.log(
@@ -553,16 +811,37 @@ export function GameContainer() {
 
   const prepareHoverStone = useCallback(() => {
     const landingSurface = stackSurfaceYRef.current
+    hoverTransitionRef.current = null
 
-    const candle = candleSourceRef.current.next()
-    const { params: stoneParams, color, features, facetStrength } = computeVisualFromCandle(candle)
-    const baseVertices = normalizePoints(
-      generateStoneShape(stoneParams, { facetStrength }),
-    )
+    const visual = consumeNextCandleVisual()
+    const prevTopAngle = lastTopAngleRef.current
+    const accountStore = useAccountState.getState()
+    if (accountStore.lastPrice === null) {
+      accountStore.seedPrice(visual.candle.open)
+    }
+    const stanceForAccount = useGameState.getState().hoverStance
+    accountStore.registerCandle(visual.candle, stanceForAccount)
 
-    const directionalOffset = clamp(features.momentum * 0.4 + features.orderImbalance * 0.25, -Math.PI / 4, Math.PI / 4)
-    const alignmentAngle = lastTopAngleRef.current + directionalOffset
-    const vertices = rotatePoints(baseVertices, alignmentAngle)
+    const trapezoid = makeTrapezoidFromAngles({
+      widthBottom: visual.geometry.widthBottom,
+      height: visual.geometry.height,
+      taper: visual.geometry.taper,
+      round: visual.geometry.round,
+      betaGlobal: prevTopAngle + visual.geometry.beta,
+      tauGlobal: prevTopAngle + visual.geometry.tau,
+      prevTopAngleGlobal: prevTopAngle,
+      segments: 5,
+    })
+
+    const localVertices = trapezoid.local
+    const { baseOrientation } = resolveBaseOrientation(prevTopAngle, visual.geometry.beta)
+    const angleLong = baseOrientation - trapezoid.metrics.bottomAngleLocal
+    const angleShort = angleLong + Math.PI
+    const angle = angleLong
+    const vertices = orientVertices(localVertices, angle)
+    const metricsWorldRaw = deriveWorldMetrics(trapezoid.metrics, angle)
+    const highlightAngle = clampTowerTilt(metricsWorldRaw.topAngle)
+    const metricsWorld = { ...metricsWorldRaw, topAngle: highlightAngle }
     const bounds = computeBounds(vertices)
 
     const targetY = landingSurface - bounds.maxY
@@ -570,21 +849,31 @@ export function GameContainer() {
     const spawnedAt = Date.now()
 
     const hover: HoverStone = {
-      baseVertices,
+      localVertices,
       vertices,
-      angle: alignmentAngle,
-      facetStrength,
+      metricsLocal: trapezoid.metrics,
+      metricsWorld,
+      geometry: visual.geometry,
+      strength: visual.strength,
+      baseOrientation,
+      updatesApplied: 1,
+      maxUpdates: STONE_CANDLE_WINDOW,
       x: CANVAS_WIDTH / 2,
       y: hoverY,
-      color,
+      color: visual.color,
       targetY,
-      params: stoneParams,
-      candle,
+      params: visual.params,
+      candle: visual.candle,
       bounds,
-      baseParams: stoneParams,
       spawnedAt,
       stance: DEFAULT_STANCE,
-      features,
+      features: visual.features,
+      angle,
+      angleLong,
+      angleShort,
+      prevTopAngle,
+      highlightAngle,
+      facetStrength: visual.facetStrength,
     }
 
     const cadence = DEFAULT_CONFIG.dropCadence / timeScale
@@ -594,7 +883,7 @@ export function GameContainer() {
     decisionDeadlineRef.current = spawnedAt + decisionDuration
     hoverModulationTimerRef.current = spawnedAt
 
-    setLatestFeatures(features)
+    setLatestFeatures(visual.features)
     setHoverStone(hover)
     setPhase("hovering")
     setDropStartTime(null)
@@ -611,8 +900,7 @@ export function GameContainer() {
     armNextDrop()
   }, [
     computeBounds,
-    computeVisualFromCandle,
-    rotatePoints,
+    consumeNextCandleVisual,
     setCanDecide,
     setDecisionProgress,
     setLatestFeatures,
@@ -664,17 +952,19 @@ export function GameContainer() {
     // Add stone to physics engine but keep physics disabled
     const finalY = stoneToFinalize.targetY
 
+    const finalizedHighlightAngle = clampTowerTilt(stoneToFinalize.highlightAngle)
     engineRef.current.addStone(
       stoneToFinalize.vertices,
       stoneToFinalize.params,
       stoneToFinalize.x,
       finalY,
       stoneToFinalize.color,
+      finalizedHighlightAngle,
     )
 
     stackTopYRef.current = finalY + stoneToFinalize.bounds.minY
     stackSurfaceYRef.current = stackTopYRef.current - STACK_GAP
-    lastTopAngleRef.current = stoneToFinalize.angle
+    lastTopAngleRef.current = finalizedHighlightAngle
 
     setPlacingStone(null)
     setPhase("stable")
@@ -689,13 +979,17 @@ export function GameContainer() {
     prepareHoverStone()
   }
 
-  const triggerLossEvent = (stance: Stance, loseCount: number) => {
+  const triggerLossEvent = (stance: Stance, loseCount: number, severity: number) => {
     if (!engineRef.current) return
 
     if (loseCount <= 0) {
       console.log("[v0] Loss check: no stones to remove")
       return
     }
+
+    hoverTransitionRef.current = null
+    setHoverStone(null)
+    setPlacingStone(null)
 
     setPhase("loss")
     setPhysicsActive(true)
@@ -706,7 +1000,10 @@ export function GameContainer() {
     const allStones = engineRef.current.getStones()
     const stonesToRemove = Math.min(loseCount, allStones.length)
 
-    console.log(`[v0] Loss event - removing ${stonesToRemove} stones due to misalignment`)
+    const penalty = useAccountState.getState().applyLossPenalty(stonesToRemove, severity)
+    console.log(
+      `[v0] Loss event - removing ${stonesToRemove} stones due to misalignment (severity: ${severity.toFixed(2)}, penalty: ${penalty.toFixed(2)})`,
+    )
 
     for (let i = 0; i < stonesToRemove && i < allStones.length; i++) {
       const stone = allStones[i]

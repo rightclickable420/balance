@@ -1,13 +1,4 @@
-# Balance Game - Quick Start Guide
-
-## 🎮 Project Overview
-
-**Balance** is a sophisticated physics-based stone stacking game that visualizes financial market data through interactive gameplay. Stones are procedurally generated from candlestick chart data, creating a unique blend of physics simulation and data visualization.
-
-**Current Status**: ✅ **Fully Deployed & Operational**
-- **Live URL**: https://balance-lx4ucum7k-ethangillart-gmailcoms-projects.vercel.app
-- **Status**: Production-ready with complete game functionality
-- **Tech Stack**: Next.js 15.5.4, React 18, Matter.js, TypeScript, Tailwind CSS v4
+# Balance Quick Start
 
 ## 🛠️ Tech Stack
 
@@ -89,23 +80,25 @@ npm run start     # Start production server
 npm run lint      # Run ESLint
 ```
 
-## 🎯 Key Features & Architecture
+## 🎯 Current Snapshot
 
-### Game Mechanics
-- **Stone Generation**: Procedural stones from financial candlestick data
-- **Physics Simulation**: Realistic 2D physics with Matter.js
-- **Interactive Controls**:
-  - Click/tap to flip stones (180° rotation)
-  - Swipe/drag to discard unwanted stones
-  - Keyboard controls (Space/F to flip, D/Delete to discard)
-- **Market Data Integration**: Real-time market conditions affect gameplay
+- **Playable demo** running entirely client-side with a deterministic mock candle feed (no live market connectivity yet).
+- **Hover stone morphing** smoothly transitions geometry, color, and stance alignment when new candles stream in.
+- **Loss events** fire in any phase: persistent misalignment kicks the tower, applies a mock account penalty, and restacks the tower from the physics world.
+- **Mock account ledger** tracks balance, realized PnL, and equity based on the active stance and incoming candles.
+- **Stance persistence** mirrors trader behavior—long, short, or flat carry forward until the player flips or discards.
 
-### Architecture Highlights
-- **Modular Design**: Separate concerns (physics, data, audio, UI)
-- **Type Safety**: Comprehensive TypeScript interfaces
-- **Performance Optimized**: RequestAnimationFrame-based game loop
-- **Responsive Design**: Works on desktop and mobile devices
-- **Audio System**: Contextual sound effects for interactions
+## ⚙️ How the System Works Today
+
+### Stone & Stance Logic
+- Procedural trapezoids derive shape and color from feature data.
+- Bottom/top faces are mirrored offsets from the previous stone’s orientation and clamped to avoid runaway tower tilt.
+- Stones drop on a cadence; hovering stones can be flipped (click / space / tap) or discarded (swipe / delete).
+
+### Physics & Loss Handling
+- Matter.js keeps placed stones static unless a loss event injects force.
+- Alignment checks run continuously; misfits remove recent stones and nudge the account balance.
+- Hover animations cancel gracefully during tumbles to prevent desyncs.
 
 ### Data Flow
 ```
@@ -156,28 +149,6 @@ Currently no environment variables required. Add to `.env.local` for local devel
 - **Consistent API**: Standardized component props and styling
 - **Customizable**: Easy to extend and modify
 
-## 🔍 Debugging & Development
-
-### Debug Mode
-- **Enable**: Press `L` key during gameplay
-- **Features**: 60x time scale, detailed console logging
-- **Visual Debug**: Overlay showing game state and physics data
-
-### Common Development Tasks
-```bash
-# Check build status
-npm run build
-
-# Run type checking
-npx tsc --noEmit
-
-# Check for linting issues
-npm run lint
-
-# Clear Next.js cache
-rm -rf .next
-```
-
 ## 🤝 Contributing
 
 ### Branch Strategy
@@ -191,6 +162,37 @@ rm -rf .next
 - Test on both desktop and mobile
 - Verify physics interactions work smoothly
 - Check accessibility features
+
+## 🔭 Aspirational Roadmap
+
+### 🎮 What Balance Is
+Balance is a minimalist trading game that turns live market data into a physical, intuitive experience. Instead of charts, numbers, and indicators, players feel the market through shapes, movement, and color.
+
+### 🌍 The Core Idea
+- The market becomes a stack of stones.
+- Each new stone is generated from live data (direction, momentum, volatility, and more).
+- The player maintains a stance—long, short, or flat—that determines how new stones align.
+- Staying in sync grows a tall, stable tower; falling out of sync tilts or tumbles the stack, visualizing loss.
+
+### 💡 The Feel
+- Stones are organic rounded trapezoids that either “fit” or “misfit.”
+- The bottom face signals continuation; the top face suggests reversal.
+- Color shifts from green (bullish) to magenta (bearish), fading toward grey as conviction weakens.
+- Every wobble or drift is a physical metaphor for market behavior.
+
+### 🧠 What the Player Learns
+- How alignment, trend, and volatility *feel*, not just how they’re calculated.
+- Discipline and timing keep the tower upright.
+- “Being wrong” becomes a literal imbalance, not only a negative number.
+
+### 🧩 The System Behind It
+- Market data drives geometry, color, and timing.
+- Each candle spawns a stone at a fixed cadence.
+- Stance persists and can be changed at any moment.
+- Tower stability represents profit and loss over time.
+
+### 🔭 The Vision
+Balance aims to be both a game and a training tool—a bridge between intuition and data. It should let people experience financial rhythm and emotional control without jargon or charts, turning markets into something you can literally balance with your hands and eyes.
 
 ## 📚 Additional Resources
 

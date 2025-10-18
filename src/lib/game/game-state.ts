@@ -67,7 +67,7 @@ export const useGameState = create<GameState>((set) => ({
   dropStartTime: null,
   canDecide: true,
   placementProgress: 0,
-  debugMode: true,
+  debugMode: false,
   timeScale: 1,
   hoverStance: "long",
   latestFeatures: null,
