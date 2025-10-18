@@ -23,6 +23,7 @@ export interface CandleSource {
   next(): Candle
   peek(): Candle
   reset(): void
+  getSource(): string
 }
 
 export interface GameConfig {

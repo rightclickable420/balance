@@ -24,6 +24,7 @@ export class LiveCandleSource implements CandleSource {
   private queue: Candle[] = []
   private lastCandle: Candle | null = null
   private fetching = false
+  private currentSource = "mock"
 
   constructor(options: LiveCandleSourceOptions = {}) {
     this.symbol = options.symbol ?? DEFAULT_SYMBOL
@@ -70,6 +71,7 @@ export class LiveCandleSource implements CandleSource {
     this.queue = []
     this.lastCandle = null
     this.fetching = false
+    this.currentSource = "mock"
     this.fallback.reset()
 
     if (typeof window !== "undefined") {
@@ -89,7 +91,10 @@ export class LiveCandleSource implements CandleSource {
         throw new Error(`Failed to fetch live candles: ${response.status}`)
       }
 
-      const data = (await response.json()) as { candles?: Candle[] } | null
+      const data = (await response.json()) as { candles?: Candle[]; source?: string } | null
+      if (data?.source) {
+        this.currentSource = data.source
+      }
       const candles = Array.isArray(data?.candles) ? data!.candles : []
 
       if (candles.length > 0) {
@@ -118,6 +123,7 @@ export class LiveCandleSource implements CandleSource {
   }
 
   private enqueueFallbackBatch(): void {
+    this.currentSource = "mock"
     for (let i = 0; i < this.batchSize; i++) {
       const candle = this.fallback.next()
       this.queue.push(candle)
@@ -136,5 +142,9 @@ export class LiveCandleSource implements CandleSource {
       close: candle.close,
       volume: candle.volume,
     }
+  }
+
+  getSource(): string {
+    return this.currentSource
   }
 }

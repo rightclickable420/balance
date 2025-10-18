@@ -9,6 +9,7 @@ export class MockCandleSource implements CandleSource {
   private lastClose = 100
   private rng: () => number
   private initialPrice: number
+  private readonly source = "mock"
 
   constructor(seed = 42, initialPrice = 100) {
     // Simple seeded RNG (mulberry32)
@@ -46,6 +47,10 @@ export class MockCandleSource implements CandleSource {
       candles.push(generator.next())
     }
     return candles
+  }
+
+  getSource(): string {
+    return this.source
   }
 
   private generateCandle(index: number): Candle {

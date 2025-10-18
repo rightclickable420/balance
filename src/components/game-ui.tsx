@@ -45,7 +45,7 @@ const featureDescriptors: Array<{ key: keyof Features; label: string; variant: "
 ]
 
 export function GameUI() {
-  const { stonesPlaced, canDecide, phase, hoverStance, latestFeatures, decisionProgress } = useGameState()
+  const { stonesPlaced, canDecide, phase, hoverStance, latestFeatures, decisionProgress, dataProvider } = useGameState()
   const balance = useAccountState((state) => state.balance)
   const realizedPnl = useAccountState((state) => state.realizedPnl)
   const equity = useAccountState((state) => state.equity)
@@ -67,12 +67,19 @@ export function GameUI() {
   }, [stonesPlaced])
 
   const progressWidth = clamp01(decisionProgress)
+  const providerDisplay = (() => {
+    const normalized = dataProvider?.toLowerCase() ?? "mock"
+    if (normalized === "hyperliquid") return "Hyperliquid"
+    if (normalized === "polygon") return "Polygon"
+    if (normalized === "default") return "Live"
+    return "Mock Data"
+  })()
 
   return (
     <div className="pointer-events-none">
       <div className="absolute top-4 left-4 right-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-3">
-          <div className="w-44">
+          <div className="w-44 flex flex-col gap-2">
             {phase === "hovering" && (
               <div className="bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border text-right">
                 <div className="text-xs text-muted-foreground uppercase tracking-wide">Stance</div>
@@ -94,6 +101,9 @@ export function GameUI() {
                 </div>
               </div>
             )}
+            <div className="bg-card/60 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-border text-[11px] uppercase tracking-wide text-muted-foreground text-right">
+              Data Source: {providerDisplay}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-start gap-3">

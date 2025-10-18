@@ -257,6 +257,7 @@ export function GameContainer() {
     setHoverStance,
     setLatestFeatures,
     setDecisionProgress,
+    setDataProvider,
   } = useGameState()
 
   const isDecisionActive = useCallback(() => {
@@ -301,12 +302,14 @@ export function GameContainer() {
 
   const consumeNextCandleVisual = useCallback(() => {
     const candle = candleSourceRef.current.next()
+    const provider = candleSourceRef.current.getSource()
+    setDataProvider(provider)
     const { features, state } = computeFeatures(featureStateRef.current, candle)
     featureStateRef.current = state
     lastFeaturesRef.current = features
     const { params, color, facetStrength, geometry, strength } = featuresToStoneVisual(features, candle.timestamp)
     return { candle, params, color, features, facetStrength, geometry, strength }
-  }, [])
+  }, [setDataProvider])
 
   const consumeCandleWindow = useCallback(
     (count: number) => {

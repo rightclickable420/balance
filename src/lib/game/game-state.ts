@@ -30,6 +30,7 @@ export interface GameState {
   hoverStance: Stance
   latestFeatures: Features | null
   decisionProgress: number
+  dataProvider: string
 
   // Actions
   setPhase: (phase: GamePhase) => void
@@ -50,6 +51,7 @@ export interface GameState {
   setHoverStance: (stance: Stance) => void
   setLatestFeatures: (features: Features | null) => void
   setDecisionProgress: (progress: number) => void
+  setDataProvider: (provider: string) => void
   reset: () => void
 }
 
@@ -72,6 +74,7 @@ export const useGameState = create<GameState>((set) => ({
   hoverStance: "long",
   latestFeatures: null,
   decisionProgress: 0,
+  dataProvider: "mock",
 
   // Actions
   setPhase: (phase) => set({ phase }),
@@ -95,6 +98,7 @@ export const useGameState = create<GameState>((set) => ({
   setHoverStance: (hoverStance) => set({ hoverStance }),
   setLatestFeatures: (latestFeatures) => set({ latestFeatures }),
   setDecisionProgress: (decisionProgress) => set({ decisionProgress }),
+  setDataProvider: (dataProvider) => set({ dataProvider }),
   reset: () =>
     set({
       phase: "waiting",
@@ -114,5 +118,6 @@ export const useGameState = create<GameState>((set) => ({
       hoverStance: "long",
       latestFeatures: null,
       decisionProgress: 0,
+      dataProvider: "mock",
     }),
 }))

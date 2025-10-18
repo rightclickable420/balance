@@ -8,6 +8,8 @@ const MAX_LIMIT = 500
 const polygonEndpoint = "https://api.polygon.io/v2/aggs/ticker"
 const hyperliquidEndpoint = "https://api.hyperliquid.xyz/info"
 const DEFAULT_PROVIDER = (process.env.BALANCE_DATA_PROVIDER ?? "polygon").toLowerCase()
+const RATE_LIMIT_LOG_INTERVAL_MS = 60_000
+let lastHyperliquidRateLimitLog = 0
 
 export const runtime = "edge"
 
@@ -113,6 +115,14 @@ async function fetchHyperliquidCandles(symbol: string, limit: number): Promise<C
   })
 
   if (!response.ok) {
+    if (response.status === 429) {
+      const now = Date.now()
+      if (now - lastHyperliquidRateLimitLog > RATE_LIMIT_LOG_INTERVAL_MS) {
+        console.warn("[candles] Hyperliquid rate limited request. Using fallback provider.")
+        lastHyperliquidRateLimitLog = now
+      }
+      return []
+    }
     throw new Error(`Hyperliquid API returned ${response.status}`)
   }
 
