@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { GameCanvas } from "./game-canvas"
 import { PhysicsEngine } from "@/lib/game/physics-engine"
-import { MockCandleSource } from "@/lib/data/mock-candle-source"
+import { createCandleSource } from "@/lib/data/candle-source-factory"
 import {
   makeTrapezoidFromAngles,
   rotatePoint,
@@ -171,7 +171,7 @@ const DEFAULT_STANCE: Stance = "long"
 
 export function GameContainer() {
   const engineRef = useRef<PhysicsEngine | null>(null)
-  const candleSourceRef = useRef(new MockCandleSource())
+  const candleSourceRef = useRef(createCandleSource())
   const audioRef = useRef<AudioManager>(new AudioManager())
   const animationFrameRef = useRef<number>()
   const lastTimeRef = useRef<number>(Date.now())

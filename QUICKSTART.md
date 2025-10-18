@@ -134,7 +134,14 @@ Market Data → Candle Mapping → Stone Parameters → Physics Engine → Visua
 - **Performance**: Automatic image optimization and caching
 
 ### Environment Variables
-Currently no environment variables required. Add to `.env.local` for local development if needed.
+Create a `.env.local` with any of the following (all optional):
+
+| Variable | Purpose |
+| --- | --- |
+| `POLYGON_API_KEY` | Enables live candle retrieval via Polygon’s aggregates API. Without it the game falls back to deterministic mock candles. |
+| `BALANCE_DEFAULT_SYMBOL` | Overrides the default ticker (`SPY`) requested from Polygon. |
+| `NEXT_PUBLIC_BALANCE_USE_LIVE` | Set to `true` to prefer live candles on the client; otherwise the mock source is used. |
+| `NEXT_PUBLIC_BALANCE_SYMBOL` | Client-side default symbol (must match `BALANCE_DEFAULT_SYMBOL` when live mode is on). |
 
 ## 🎨 Design System
 

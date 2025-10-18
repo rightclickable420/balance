@@ -8,8 +8,9 @@ export class MockCandleSource implements CandleSource {
   private index = 0
   private lastClose = 100
   private rng: () => number
+  private initialPrice: number
 
-  constructor(seed = 42) {
+  constructor(seed = 42, initialPrice = 100) {
     // Simple seeded RNG (mulberry32)
     let state = seed
     this.rng = () => {
@@ -18,6 +19,8 @@ export class MockCandleSource implements CandleSource {
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296
     }
+    this.initialPrice = initialPrice
+    this.lastClose = initialPrice
   }
 
   next(): Candle {
@@ -33,7 +36,16 @@ export class MockCandleSource implements CandleSource {
 
   reset(): void {
     this.index = 0
-    this.lastClose = 100
+    this.lastClose = this.initialPrice
+  }
+
+  static generateSeries(count: number, seed = 42, initialPrice = 100): Candle[] {
+    const generator = new MockCandleSource(seed, initialPrice)
+    const candles: Candle[] = []
+    for (let i = 0; i < count; i++) {
+      candles.push(generator.next())
+    }
+    return candles
   }
 
   private generateCandle(index: number): Candle {
