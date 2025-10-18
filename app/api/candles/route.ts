@@ -81,12 +81,9 @@ async function fetchPolygonCandles(symbol: string, limit: number, useCache = fal
   }
 
   const now = new Date()
-  const timespanMinutes = limit + 5
-  const start = new Date(now.getTime() - timespanMinutes * 60 * 1000)
+  const from = new Date(now.getTime() - limit * 60 * 1000)
 
-  const from = start.toISOString().split("T")[0]
-  const to = now.toISOString().split("T")[0]
-  const url = `${polygonEndpoint}/${encodeURIComponent(symbol)}/range/1/minute/${from}/${to}?sort=asc&limit=${limit}&apiKey=${apiKey}`
+  const url = `${polygonEndpoint}/${encodeURIComponent(symbol)}/range/1/minute/${from.getTime()}/${now.getTime()}?sort=asc&limit=${limit}&apiKey=${apiKey}`
 
   const response = await fetch(url, { cache: "no-store" })
   if (!response.ok) {
