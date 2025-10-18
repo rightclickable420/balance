@@ -144,6 +144,7 @@ Create a `.env.local` with any of the following (all optional):
 | `NEXT_PUBLIC_BALANCE_SYMBOL` | Client-side default symbol (must match `BALANCE_DEFAULT_SYMBOL` when live mode is on). |
 | `BALANCE_DATA_PROVIDER` | Server-side provider selection (`polygon`, `hyperliquid`, or `mock`). `hyperliquid` uses the native websocket stream. Defaults to `polygon`. |
 | `NEXT_PUBLIC_BALANCE_DATA_PROVIDER` | Client hint for choosing the provider (`polygon`, `hyperliquid`, or `mock`). |
+| `NEXT_PUBLIC_POLYGON_API_KEY` | Required for Polygon WebSocket authentication (exposed client-side). |
 
 ## 🎨 Design System
 

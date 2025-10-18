@@ -1,6 +1,7 @@
 import { MockCandleSource } from "./mock-candle-source"
 import { LiveCandleSource } from "./live-candle-source"
 import { HyperliquidWebsocketSource } from "./hyperliquid-websocket-source"
+import { PolygonWebsocketSource } from "./polygon-websocket-source"
 import type { CandleSource } from "@/lib/types"
 
 const getProvider = () =>
@@ -21,6 +22,13 @@ export const createCandleSource = (): CandleSource => {
       return new MockCandleSource()
     }
     return new HyperliquidWebsocketSource({ symbol: getHyperliquidSymbol() })
+  }
+
+  if (provider === "polygon") {
+    if (typeof window === "undefined") {
+      return new MockCandleSource()
+    }
+    return new PolygonWebsocketSource({ symbol: DEFAULT_SYMBOL, snapshotSize: 180 })
   }
 
   if (LIVE_ENABLED) {
