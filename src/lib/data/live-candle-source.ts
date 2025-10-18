@@ -5,17 +5,20 @@ type LiveCandleSourceOptions = {
   symbol?: string
   endpoint?: string
   batchSize?: number
+  provider?: string
   fallback?: CandleSource
 }
 
 const DEFAULT_SYMBOL = process.env.NEXT_PUBLIC_BALANCE_SYMBOL ?? "SPY"
 const DEFAULT_ENDPOINT = "/api/candles"
 const DEFAULT_BATCH_SIZE = 120
+const DEFAULT_PROVIDER = process.env.NEXT_PUBLIC_BALANCE_DATA_PROVIDER ?? "polygon"
 
 export class LiveCandleSource implements CandleSource {
   private readonly symbol: string
   private readonly endpoint: string
   private readonly batchSize: number
+  private readonly provider: string
   private readonly fallback: CandleSource
 
   private queue: Candle[] = []
@@ -26,6 +29,7 @@ export class LiveCandleSource implements CandleSource {
     this.symbol = options.symbol ?? DEFAULT_SYMBOL
     this.endpoint = options.endpoint ?? DEFAULT_ENDPOINT
     this.batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE
+    this.provider = options.provider ?? DEFAULT_PROVIDER
     this.fallback = options.fallback ?? new MockCandleSource()
 
     if (typeof window !== "undefined") {
@@ -78,7 +82,7 @@ export class LiveCandleSource implements CandleSource {
 
     this.fetching = true
     try {
-      const url = `${this.endpoint}?symbol=${encodeURIComponent(this.symbol)}&limit=${this.batchSize}`
+      const url = `${this.endpoint}?symbol=${encodeURIComponent(this.symbol)}&limit=${this.batchSize}&provider=${encodeURIComponent(this.provider)}`
       const response = await fetch(url, { cache: "no-store" })
 
       if (!response.ok) {

@@ -142,6 +142,8 @@ Create a `.env.local` with any of the following (all optional):
 | `BALANCE_DEFAULT_SYMBOL` | Overrides the default ticker (`SPY`) requested from Polygon. |
 | `NEXT_PUBLIC_BALANCE_USE_LIVE` | Set to `true` to prefer live candles on the client; otherwise the mock source is used. |
 | `NEXT_PUBLIC_BALANCE_SYMBOL` | Client-side default symbol (must match `BALANCE_DEFAULT_SYMBOL` when live mode is on). |
+| `BALANCE_DATA_PROVIDER` | Server-side provider selection (`polygon`, `hyperliquid`, or `mock`). Defaults to `polygon`. |
+| `NEXT_PUBLIC_BALANCE_DATA_PROVIDER` | Client hint for choosing the provider (`polygon`, `hyperliquid`, or `mock`). |
 
 ## 🎨 Design System
 
