@@ -125,12 +125,36 @@ export const useAccountState = create<AccountState>((set, get) => ({
 
     const state = get()
 
-    // When placing a stone, we're closing the current position
-    // The unrealized P&L should already be calculated correctly
-    const delta = state.unrealizedPnl
-    const nextBalance = state.balance + delta
-    const nextRealized = state.realizedPnl + delta
-    const nextEquity = nextBalance
+    // Check if we're changing stance - only close position if stance changed
+    const isStanceChange = state.currentPositionStance !== stance && state.currentPositionStance !== "flat"
+
+    let delta = 0
+    let nextBalance = state.balance
+    let nextRealized = state.realizedPnl
+    let nextEntryPrice = state.currentPositionEntryPrice
+    let nextStance = state.currentPositionStance
+
+    if (isStanceChange) {
+      // Stance changed - close current position and realize P&L
+      console.log(`[Position] Stance change: ${state.currentPositionStance} → ${stance}, realizing P&L: $${state.unrealizedPnl.toFixed(2)}`)
+      delta = state.unrealizedPnl
+      nextBalance = state.balance + delta
+      nextRealized = state.realizedPnl + delta
+
+      // Open new position at current price
+      nextEntryPrice = candle.close
+      nextStance = stance
+    } else {
+      // Stance unchanged - position continues, just update entry price to latest candle close
+      // This represents the continuous trading position across multiple stones
+      console.log(`[Position] Continuing ${stance} position, entry updated to $${candle.close.toFixed(2)}`)
+      nextEntryPrice = candle.close
+      nextStance = stance
+      // Don't realize P&L - it stays unrealized
+      delta = 0
+    }
+
+    const nextEquity = nextBalance + state.unrealizedPnl
 
     const snapshot: AccountSnapshot = {
       timestamp: candle.timestamp,
@@ -152,9 +176,9 @@ export const useAccountState = create<AccountState>((set, get) => ({
       equity: nextEquity,
       lastPrice: candle.close,
       history: nextHistory,
-      unrealizedPnl: 0, // Reset unrealized when we realize the P&L
-      currentPositionEntryPrice: null, // Position is closed
-      currentPositionStance: "flat", // No active position after placing stone
+      unrealizedPnl: isStanceChange ? 0 : state.unrealizedPnl, // Only reset if stance changed
+      currentPositionEntryPrice: nextEntryPrice,
+      currentPositionStance: nextStance,
     })
 
     return delta

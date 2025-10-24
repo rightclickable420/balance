@@ -8,10 +8,13 @@ import { useGesture } from "@use-gesture/react"
 export interface GestureHandlers {
   onFlip: () => void
   onDiscard: () => void
+  onSetLong?: () => void
+  onSetShort?: () => void
+  onSetFlat?: () => void
 }
 
 export function useGestureControls(elementRef: React.RefObject<HTMLElement>, handlers: GestureHandlers) {
-  const { onFlip, onDiscard } = handlers
+  const { onFlip, onDiscard, onSetLong, onSetShort, onSetFlat } = handlers
   const lastTapRef = useRef<number>(0)
 
   // Gesture handling
@@ -49,12 +52,23 @@ export function useGestureControls(elementRef: React.RefObject<HTMLElement>, han
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
-        case " ": // Space to flip
-        case "f": // F to flip
+        case "ArrowUp": // Up arrow = Long
+          e.preventDefault()
+          if (onSetLong) onSetLong()
+          break
+        case "ArrowDown": // Down arrow = Short
+          e.preventDefault()
+          if (onSetShort) onSetShort()
+          break
+        case " ": // Space = Flat
+          e.preventDefault()
+          if (onSetFlat) onSetFlat()
+          break
+        case "f": // F to flip (legacy)
           e.preventDefault()
           onFlip()
           break
-        case "d": // D to discard
+        case "d": // D to discard (legacy)
         case "Delete":
         case "Backspace":
           e.preventDefault()
@@ -65,5 +79,5 @@ export function useGestureControls(elementRef: React.RefObject<HTMLElement>, han
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [onFlip, onDiscard])
+  }, [onFlip, onDiscard, onSetLong, onSetShort, onSetFlat])
 }

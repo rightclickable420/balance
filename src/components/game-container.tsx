@@ -861,9 +861,68 @@ export function GameContainer() {
     accountState.updateUnrealizedPnl(hover.candle?.close ?? 0, "flat")
   }, [applyAlignmentSample, canDecide, setHoverStance, setHoverStone, updateForceIndicators])
 
+  // Direct stance setters for keyboard controls
+  const handleSetStance = useCallback((targetStance: Stance) => {
+    const hover = hoverStoneRef.current
+    if (!hover || !canDecide || hoverTransitionRef.current) return
+    if (hover.stance === targetStance) return // Already in this stance
+
+    const targetAngle = targetStance === "short" ? hover.angleShort :
+                        targetStance === "flat" ? hover.angleFlat :
+                        hover.angleLong
+
+    const rotated = orientVertices(hover.localVertices, targetAngle)
+    const metricsWorld = deriveWorldMetrics(hover.metricsLocal, targetAngle)
+    const highlightAngle = normalizeAngle(metricsWorld.topAngle)
+    const placement = solvePlacement(hover.anchored, targetAngle, stackOrientationRef.current)
+    const hoverScreenY = DESIRED_TOP_SCREEN_Y - HOVER_VERTICAL_OFFSET
+    const currentTowerOffset = towerOffsetTargetRef.current
+    const hoverWorldY = hoverScreenY - currentTowerOffset
+    const bounds = computeBounds(rotated)
+
+    const targetHover: HoverStone = {
+      ...hover,
+      stance: targetStance,
+      angle: targetAngle,
+      vertices: rotated,
+      metricsWorld,
+      highlightAngle,
+      bounds,
+      targetY: placement.position.y,
+      x: placement.position.x,
+      y: hoverWorldY,
+    }
+
+    // Animate the stance change
+    hoverTransitionRef.current = {
+      start: hover,
+      target: targetHover,
+      elapsed: 0,
+      duration: 300,
+    }
+
+    setHoverStance(targetStance)
+    if (lastFeaturesRef.current) {
+      applyAlignmentSample(lastFeaturesRef.current, targetStance)
+      updateForceIndicators(alignmentSampleRef.current.score)
+    }
+
+    // Update unrealized P&L with new stance
+    if (hover.candle && Number.isFinite(hover.candle.close)) {
+      accountState.updateUnrealizedPnl(hover.candle.close, targetStance)
+    }
+  }, [applyAlignmentSample, canDecide, setHoverStance, updateForceIndicators])
+
+  const handleSetLong = useCallback(() => handleSetStance("long"), [handleSetStance])
+  const handleSetShort = useCallback(() => handleSetStance("short"), [handleSetStance])
+  const handleSetFlat = useCallback(() => handleSetStance("flat"), [handleSetStance])
+
   useGestureControls(containerRef, {
     onFlip: handleFlip,
     onDiscard: handleDiscard,
+    onSetLong: handleSetLong,
+    onSetShort: handleSetShort,
+    onSetFlat: handleSetFlat,
   })
 
   useEffect(() => {
@@ -1200,26 +1259,28 @@ export function GameContainer() {
   }, [phase, consumeNextCandleVisual, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators])
 
   // Check for loss events based on actual balance drawdown
-  // Only check during stable/hovering phases to avoid conflicts with placement
+  // Subscribe to balance changes from account state
+  const balance = useAccountState((state) => state.balance)
+  const startingBalance = useAccountState((state) => state.startingBalance)
+
   useEffect(() => {
     const engine = engineRef.current
     if (!engine) return
     if (phase !== "hovering" && phase !== "stable") return // Only check between placements
     if (stonesPlaced === 0) return // Can't lose stones if we don't have any
 
-    const currentBalance = accountState.balance
-    const startingBalance = accountState.startingBalance
-
     // Only check if balance has changed since last check to prevent infinite loops
-    if (lastLossCheckBalanceRef.current === currentBalance) return
-    lastLossCheckBalanceRef.current = currentBalance
+    if (lastLossCheckBalanceRef.current === balance) return
+    lastLossCheckBalanceRef.current = balance
+
+    console.log(`[Loss Check] Balance: $${balance.toFixed(2)}, Starting: $${startingBalance.toFixed(2)}, Loss: ${((1 - balance/startingBalance) * 100).toFixed(1)}%`)
 
     // Check if we've hit a loss threshold
-    const loseCount = stonesToLoseFromDrawdown(currentBalance, startingBalance, stonesPlaced)
+    const loseCount = stonesToLoseFromDrawdown(balance, startingBalance, stonesPlaced)
 
     if (loseCount > 0) {
-      const severity = calculateLossSeverity(currentBalance, startingBalance)
-      console.log(`[Loss Check] Balance: $${currentBalance.toFixed(2)}, Starting: $${startingBalance.toFixed(2)}, Loss: ${((1 - currentBalance/startingBalance) * 100).toFixed(1)}%, Stones to lose: ${loseCount}`)
+      const severity = calculateLossSeverity(balance, startingBalance)
+      console.log(`[Loss Event Triggered] Stones to lose: ${loseCount}, Severity: ${severity.toFixed(2)}`)
 
       // Apply the P&L penalty (deduct from balance)
       accountState.applyLossPenalty(loseCount, severity)
@@ -1227,7 +1288,7 @@ export function GameContainer() {
       // Trigger the visual tumble effect
       triggerLossEvent(hoverStance ?? DEFAULT_STANCE, loseCount, severity)
     }
-  }, [phase, stonesPlaced, triggerLossEvent, hoverStance, accountState])
+  }, [phase, stonesPlaced, triggerLossEvent, hoverStance, balance, startingBalance, accountState])
 
   return (
     <div ref={containerRef} className="relative touch-none">
