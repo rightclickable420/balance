@@ -169,9 +169,13 @@ export function GameUI() {
             }`}>
               ${equity.toFixed(2)}
             </div>
-            <div className="text-xs uppercase tracking-wider text-muted-foreground/70 font-bold mt-0.5">
-              {stonesPlaced} Stones
-            </div>
+            {unrealizedPnl !== 0 && (
+              <div className={`text-xs uppercase tracking-wider font-bold mt-0.5 ${
+                unrealizedPnl >= 0 ? "text-emerald-400/70" : "text-rose-400/70"
+              }`}>
+                Unrealized: {unrealizedPnl >= 0 ? "+" : ""}${Math.abs(unrealizedPnl).toFixed(2)}
+              </div>
+            )}
           </div>
         </div>
 
