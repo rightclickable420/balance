@@ -86,7 +86,12 @@ export const featuresToStoneVisual = (features: Features, seed: number, stance: 
   const taper = clamp(0.25 + 0.45 * params.convexity + 0.2 * (1 - Math.abs(order)), 0, 1)
   const round = clamp(0.35 + 0.45 * (1 - params.jaggedness) + 0.15 * (1 - volatility), 0, 1)
 
-  const directionalSignal = clamp(momentum * 0.75 + order * 0.55 + regime * 0.25, -1, 1)
+  // Use alignment (not raw momentum) to determine face angles
+  // Positive alignment → angles that will help balance the tower
+  // Negative alignment → angles that will cause tower to lean/curve
+  const alignmentSignal = alignment  // Already clamped -1 to 1
+
+  // Conviction based on market features (how strong/clear the signal is)
   const conviction = clamp01(
     Math.abs(momentum) * 0.5 +
       Math.abs(order) * 0.25 +
@@ -94,8 +99,12 @@ export const featuresToStoneVisual = (features: Features, seed: number, stance: 
       (1 - volatility) * 0.1 +
       (1 - Math.abs(breadth)) * 0.05,
   )
+
+  // Aligned stones get moderate angles (help balance)
+  // Misaligned stones get more extreme angles (cause problems)
+  // The geometry system will use beta to create compensating or reinforcing angles
   const maxAngleDeg = lerp(12, 34, conviction)
-  const faceAngle = ((directionalSignal * maxAngleDeg) / 180) * Math.PI
+  const faceAngle = ((alignmentSignal * maxAngleDeg) / 180) * Math.PI
 
   const beta = faceAngle
   const tau = -faceAngle

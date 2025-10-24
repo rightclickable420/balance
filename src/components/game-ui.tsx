@@ -248,22 +248,56 @@ export function GameUI() {
 
       {/* Bottom - Market Features */}
       {latestFeatures && (
-        <div className="absolute bottom-0 left-0 right-0 h-16 flex items-center justify-center gap-8 px-6 bg-gradient-to-t from-black/60 to-transparent backdrop-blur-sm border-t border-white/5">
-          {featureDescriptors.map(({ key, label, variant }) => {
-            const value = latestFeatures[key]
-            const color = variant === "signed" ? signedColor(value) : magnitudeColor(value)
-            return (
-              <div key={key} className="flex items-center gap-2.5 w-20">
-                <div className="h-3 w-3 rounded-full shadow-lg flex-shrink-0" style={{ background: color, boxShadow: `0 0 12px ${color}` }} />
-                <div className="flex flex-col flex-1 min-w-0">
-                  <div className="text-[10px] uppercase tracking-widest text-white/50 font-bold leading-none">{label}</div>
-                  <div className="text-sm font-black tabular-nums leading-none mt-1 w-full text-left" style={{ color }}>
-                    {value >= 0 ? '\u00A0' : ''}{value.toFixed(2)}
-                  </div>
+        <div className="absolute bottom-0 left-0 right-0 h-20 flex items-center justify-between px-6 bg-gradient-to-t from-black/60 to-transparent backdrop-blur-sm border-t border-white/5">
+          {/* Left: Market Direction Indicator */}
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Market</div>
+              <div className="flex items-center gap-2 mt-1">
+                <div className={`text-lg font-black ${
+                  latestFeatures.momentum > 0.1 ? 'text-emerald-400' :
+                  latestFeatures.momentum < -0.1 ? 'text-rose-400' :
+                  'text-amber-400'
+                }`}>
+                  {latestFeatures.momentum > 0.1 ? '↑ BULLISH' :
+                   latestFeatures.momentum < -0.1 ? '↓ BEARISH' :
+                   '→ NEUTRAL'}
                 </div>
               </div>
-            )
-          })}
+            </div>
+            {phase === "hovering" && hoverStance !== "flat" && (
+              <>
+                <div className="h-8 w-px bg-white/10" />
+                <div className="flex flex-col">
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Your Position</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className={`text-lg font-black ${stanceAccent[hoverStance]}`}>
+                      {hoverStance === "long" ? '↑ LONG' : '↓ SHORT'}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Right: Market Features */}
+          <div className="flex items-center gap-6">
+            {featureDescriptors.map(({ key, label, variant }) => {
+              const value = latestFeatures[key]
+              const color = variant === "signed" ? signedColor(value) : magnitudeColor(value)
+              return (
+                <div key={key} className="flex items-center gap-2 w-16">
+                  <div className="h-2.5 w-2.5 rounded-full shadow-lg flex-shrink-0" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div className="text-[9px] uppercase tracking-widest text-white/50 font-bold leading-none">{label}</div>
+                    <div className="text-xs font-black tabular-nums leading-none mt-0.5 w-full text-left" style={{ color }}>
+                      {value >= 0 ? '\u00A0' : ''}{value.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
