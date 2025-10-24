@@ -132,7 +132,7 @@ export function GameUI() {
         <div className="flex items-center gap-6">
           <div className="flex flex-col">
             <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Balance</div>
-            <div className="text-3xl font-black text-foreground tabular-nums tracking-tight leading-none mt-0.5">
+            <div className="text-3xl font-black text-white tabular-nums tracking-tight leading-none mt-0.5">
               ${balance.toFixed(2)}
             </div>
           </div>
@@ -145,7 +145,7 @@ export function GameUI() {
               equity <= 0 ? 'text-rose-500 animate-pulse' :
               equity < balance * 0.2 ? 'text-rose-400' :
               equity < balance * 0.5 ? 'text-amber-400' :
-              'text-foreground'
+              'text-white'
             }`}>
               ${equity.toFixed(2)}
             </div>
