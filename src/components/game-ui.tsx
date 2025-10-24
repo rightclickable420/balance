@@ -79,8 +79,6 @@ export function GameUI() {
     alignmentVelocity,
   } = useGameState()
   const balance = useAccountState((state) => state.balance)
-  const realizedPnl = useAccountState((state) => state.realizedPnl)
-  const unrealizedPnl = useAccountState((state) => state.unrealizedPnl)
   const equity = useAccountState((state) => state.equity)
   const leverage = useAccountState((state) => state.leverage)
   const setLeverage = useAccountState((state) => state.setLeverage)
@@ -137,11 +135,6 @@ export function GameUI() {
             <div className="text-3xl font-black text-foreground tabular-nums tracking-tight leading-none mt-0.5">
               ${balance.toFixed(2)}
             </div>
-            <div className="text-xs uppercase tracking-wider font-bold mt-0.5">
-              <span className={realizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                Realized: {realizedPnl >= 0 ? "+" : ""}${Math.abs(realizedPnl).toFixed(2)}
-              </span>
-            </div>
           </div>
 
           <div className="h-12 w-px bg-white/10" />
@@ -156,13 +149,6 @@ export function GameUI() {
             }`}>
               ${equity.toFixed(2)}
             </div>
-            {unrealizedPnl !== 0 && (
-              <div className={`text-xs uppercase tracking-wider font-bold mt-0.5 ${
-                unrealizedPnl >= 0 ? "text-emerald-400/70" : "text-rose-400/70"
-              }`}>
-                Unrealized: {unrealizedPnl >= 0 ? "+" : ""}${Math.abs(unrealizedPnl).toFixed(2)}
-              </div>
-            )}
           </div>
         </div>
 
