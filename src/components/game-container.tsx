@@ -21,7 +21,7 @@ import { featuresToStoneVisual, type StoneGeometryInput } from "@/lib/game/featu
 import { computeRawAlignment, updateAlignment, type AlignmentSample } from "@/lib/game/alignment"
 import type { Candle, StoneParams } from "@/lib/types"
 import { createCandleSource } from "@/lib/data/candle-source-factory"
-import { stonesToLose } from "@/lib/game/loss"
+import { stonesToLoseFromDrawdown, calculateLossSeverity } from "@/lib/game/loss"
 
 const CANVAS_WIDTH = 800
 const CANVAS_HEIGHT = 600
@@ -319,6 +319,7 @@ export function GameContainer() {
   const containerRef = useRef<HTMLDivElement>(null)
   const stoneSequenceRef = useRef(0)
   const initializedRef = useRef(false)
+  const lastLossCheckBalanceRef = useRef<number | null>(null)
 
   const [hoverStoneState, setHoverStoneState] = useState<HoverStone | null>(null)
   const [placingStoneState, setPlacingStoneState] = useState<PlacingStone | null>(null)
@@ -696,6 +697,8 @@ export function GameContainer() {
       const engine = engineRef.current
       if (!engine || loseCount <= 0) return
 
+      console.log(`[Loss Event] Losing ${loseCount} stones, severity: ${severity.toFixed(2)}`)
+
       setPhase("loss")
       setPhysicsActive(true)
       setCanDecide(false)
@@ -717,30 +720,50 @@ export function GameContainer() {
         return
       }
 
+      // Sort stones by height (top stones first)
       const sorted = [...stones].sort((a, b) => computeBodyTop(a) - computeBodyTop(b))
       const drops = sorted.slice(0, Math.min(loseCount, sorted.length))
       const survivors = sorted.slice(drops.length)
 
+      console.log(`[Loss Event] Stack: ${stones.length}, Dropping: ${drops.length}, Survivors: ${survivors.length}`)
+
+      // Keep survivors static and asleep
       for (const survivor of survivors) {
         engine.setStoneStatic(survivor, true)
         Matter.Sleeping.set(survivor.body, true)
       }
 
+      // Wake up and apply physics to stones that will tumble
       for (const stone of drops) {
         engine.setStoneStatic(stone, false)
         Matter.Sleeping.set(stone.body, false)
-        Matter.Body.applyForce(stone.body, stone.body.position, { x: (Math.random() - 0.5) * 0.0005, y: -0.001 * severity })
+        // Apply random tumbling force (stronger for higher severity)
+        const randomX = (Math.random() - 0.5) * 0.001 * (1 + severity)
+        const randomY = -0.002 * severity
+        const randomTorque = (Math.random() - 0.5) * 0.00005 * severity
+        Matter.Body.applyForce(stone.body, stone.body.position, { x: randomX, y: randomY })
+        Matter.Body.setAngularVelocity(stone.body, randomTorque)
       }
 
+      // After tumble animation, remove stones with visual effect
+      const TUMBLE_DURATION = 2000 // 2 seconds to watch them tumble
       setTimeout(() => {
+        console.log(`[Loss Event] Removing ${drops.length} stones after tumble`)
+
+        // TODO: Add visual "poof" effect here (particle system, fade out, etc.)
         for (const stone of drops) {
           engine.removeStone(stone)
         }
+
+        // Recalculate stack, update stone count, and resume game
         recalcStackFromPhysics()
+        const newStoneCount = engine.getStones().length
+        useGameState.setState({ stonesPlaced: newStoneCount })
+
         setPhase("stable")
         setPhysicsActive(false)
         prepareHoverStone()
-      }, 1200)
+      }, TUMBLE_DURATION)
     },
     [clearDropTimer, prepareHoverStone, recalcStackFromPhysics, setCanDecide, setDecisionProgress, setHoverStone, setPhase, setPlacingStone, setPhysicsActive, setPlacementProgress],
   )
@@ -1176,16 +1199,35 @@ export function GameContainer() {
     return () => clearInterval(interval)
   }, [phase, consumeNextCandleVisual, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators])
 
+  // Check for loss events based on actual balance drawdown
+  // Only check during stable/hovering phases to avoid conflicts with placement
   useEffect(() => {
     const engine = engineRef.current
     if (!engine) return
-    if (alignmentScore < -0.8 && stonesPlaced > 0 && lastFeaturesRef.current) {
-      const loseCount = stonesToLose(lastFeaturesRef.current, hoverStance ?? DEFAULT_STANCE, stonesPlaced)
-      if (loseCount > 0) {
-        triggerLossEvent(hoverStance ?? DEFAULT_STANCE, loseCount, clamp(-alignmentScore, 0, 1))
-      }
+    if (phase !== "hovering" && phase !== "stable") return // Only check between placements
+    if (stonesPlaced === 0) return // Can't lose stones if we don't have any
+
+    const currentBalance = accountState.balance
+    const startingBalance = accountState.startingBalance
+
+    // Only check if balance has changed since last check to prevent infinite loops
+    if (lastLossCheckBalanceRef.current === currentBalance) return
+    lastLossCheckBalanceRef.current = currentBalance
+
+    // Check if we've hit a loss threshold
+    const loseCount = stonesToLoseFromDrawdown(currentBalance, startingBalance, stonesPlaced)
+
+    if (loseCount > 0) {
+      const severity = calculateLossSeverity(currentBalance, startingBalance)
+      console.log(`[Loss Check] Balance: $${currentBalance.toFixed(2)}, Starting: $${startingBalance.toFixed(2)}, Loss: ${((1 - currentBalance/startingBalance) * 100).toFixed(1)}%, Stones to lose: ${loseCount}`)
+
+      // Apply the P&L penalty (deduct from balance)
+      accountState.applyLossPenalty(loseCount, severity)
+
+      // Trigger the visual tumble effect
+      triggerLossEvent(hoverStance ?? DEFAULT_STANCE, loseCount, severity)
     }
-  }, [alignmentScore, hoverStance, stonesPlaced, triggerLossEvent])
+  }, [phase, stonesPlaced, triggerLossEvent, hoverStance, accountState])
 
   return (
     <div ref={containerRef} className="relative touch-none">
