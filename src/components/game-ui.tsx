@@ -82,6 +82,8 @@ export function GameUI() {
   const realizedPnl = useAccountState((state) => state.realizedPnl)
   const unrealizedPnl = useAccountState((state) => state.unrealizedPnl)
   const equity = useAccountState((state) => state.equity)
+  const leverage = useAccountState((state) => state.leverage)
+  const setLeverage = useAccountState((state) => state.setLeverage)
 
   console.log(
     `[v0] GameUI render - stones: ${stonesPlaced}, phase: ${phase}, canDecide: ${canDecide}, stance: ${hoverStance}, energyPhase: ${energyPhase}`,
@@ -242,6 +244,47 @@ export function GameUI() {
           </div>
           <div className="text-[10px] text-muted-foreground font-medium mt-1 text-right">
             Δ {alignmentVelocity.toFixed(3)}
+          </div>
+
+          <div className="h-px w-full bg-white/10 my-4" />
+
+          {/* Leverage Slider */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline justify-between">
+              <div className="text-xs text-muted-foreground uppercase tracking-widest font-bold">Leverage</div>
+              <div className={`text-3xl font-black tabular-nums ${
+                leverage <= 5 ? 'text-emerald-400' :
+                leverage <= 10 ? 'text-amber-400' :
+                'text-rose-400'
+              }`}>
+                {leverage.toFixed(1)}x
+              </div>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="20"
+              step="0.5"
+              value={leverage}
+              onChange={(e) => setLeverage(parseFloat(e.target.value))}
+              className="pointer-events-auto w-full h-2.5 rounded-full appearance-none cursor-pointer bg-white/10
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent
+                [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-accent/50
+                [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-all
+                [&::-webkit-slider-thumb]:hover:scale-110
+                [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:rounded-full
+                [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-0
+                [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:shadow-accent/50
+                [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:transition-all
+                [&::-moz-range-thumb]:hover:scale-110"
+            />
+            <div className="flex justify-between text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold">
+              <span>1x Safe</span>
+              <span className={leverage > 10 ? 'text-rose-400/80' : ''}>
+                {leverage > 10 ? '⚠ High Risk' : '20x Max'}
+              </span>
+            </div>
           </div>
         </div>
       </div>

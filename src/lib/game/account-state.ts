@@ -29,6 +29,9 @@ interface AccountState {
   // Track current position details
   currentPositionEntryPrice: number | null
   currentPositionStance: Stance
+  // Leverage settings
+  leverage: number
+  setLeverage: (leverage: number) => void
   seedPrice: (price: number) => void
   registerCandle: (candle: Candle, stance: Stance) => number
   updateUnrealizedPnl: (currentPrice: number, stance: Stance) => void
@@ -49,6 +52,13 @@ export const useAccountState = create<AccountState>((set, get) => ({
   unrealizedPnl: 0,
   currentPositionEntryPrice: null,
   currentPositionStance: "flat",
+  leverage: 1, // Default 1x leverage (no leverage)
+
+  setLeverage: (leverage) => {
+    const clampedLeverage = clampNumber(leverage, 1, 20) // Allow 1x to 20x
+    set({ leverage: clampedLeverage })
+    console.log(`[Leverage] Set to ${clampedLeverage}x`)
+  },
 
   seedPrice: (price) => {
     if (!Number.isFinite(price)) return
@@ -109,7 +119,8 @@ export const useAccountState = create<AccountState>((set, get) => ({
     }
 
     const returnPct = entryPrice > 0 ? (currentPrice - entryPrice) / entryPrice : 0
-    const unrealized = direction * returnPct * state.positionNotional
+    // Apply leverage to P&L calculation
+    const unrealized = direction * returnPct * state.positionNotional * state.leverage
     const nextEquity = state.balance + unrealized
 
     set({
