@@ -79,7 +79,8 @@ export const useAccountState = create<AccountState>((set, get) => ({
       const entryPrice = state.currentPositionEntryPrice
       const direction = state.currentPositionStance === "long" ? 1 : state.currentPositionStance === "short" ? -1 : 0
       const returnPct = entryPrice > 0 ? (currentPrice - entryPrice) / entryPrice : 0
-      const realizedFromFlip = direction * returnPct * state.positionNotional
+      // Apply leverage to realized P&L when closing position
+      const realizedFromFlip = direction * returnPct * state.positionNotional * state.leverage
 
       // Update balance with the realized P&L from closing
       const newBalance = state.balance + realizedFromFlip
