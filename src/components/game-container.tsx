@@ -737,12 +737,14 @@ export function GameContainer() {
       for (const stone of drops) {
         engine.setStoneStatic(stone, false)
         Matter.Sleeping.set(stone.body, false)
-        // Apply random tumbling force (stronger for higher severity)
-        const randomX = (Math.random() - 0.5) * 0.001 * (1 + severity)
-        const randomY = -0.002 * severity
-        const randomTorque = (Math.random() - 0.5) * 0.00005 * severity
-        Matter.Body.applyForce(stone.body, stone.body.position, { x: randomX, y: randomY })
-        Matter.Body.setAngularVelocity(stone.body, randomTorque)
+        // Apply tumbling force (stronger for higher severity)
+        // Push sideways to cause tumble off the tower
+        const direction = Math.random() > 0.5 ? 1 : -1
+        const pushX = direction * (0.005 + Math.random() * 0.01) * (1 + severity)
+        const pushY = -0.001 * severity // Slight upward nudge
+        const torque = direction * (0.0001 + Math.random() * 0.0002) * severity
+        Matter.Body.applyForce(stone.body, stone.body.position, { x: pushX, y: pushY })
+        Matter.Body.setAngularVelocity(stone.body, torque)
       }
 
       // After tumble animation, remove stones with visual effect
@@ -959,7 +961,10 @@ export function GameContainer() {
       accountState.reset()
       let support = DEFAULT_STACK_ORIENTATION
       for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
-        const { visual } = consumeNextCandleVisual("flat")  // Initial stack uses flat stance
+        // Top stone gets an angle for better visual feedback, rest are flat
+        const isTopStone = i === INITIAL_STACK_COUNT - 1
+        const initialStance: Stance = isTopStone ? (Math.random() > 0.5 ? "long" : "short") : "flat"
+        const { visual } = consumeNextCandleVisual(initialStance)
         const trapezoid = makeTrapezoidFromAngles({
           widthBottom: visual.geometry.widthBottom,
           height: visual.geometry.height,
@@ -1258,9 +1263,9 @@ export function GameContainer() {
     return () => clearInterval(interval)
   }, [phase, consumeNextCandleVisual, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators])
 
-  // Check for loss events based on actual balance drawdown
-  // Subscribe to balance changes from account state
-  const balance = useAccountState((state) => state.balance)
+  // Check for loss events based on equity drawdown (includes unrealized P&L)
+  // Subscribe to equity changes from account state
+  const equity = useAccountState((state) => state.equity)
   const startingBalance = useAccountState((state) => state.startingBalance)
 
   useEffect(() => {
@@ -1269,17 +1274,17 @@ export function GameContainer() {
     if (phase !== "hovering" && phase !== "stable") return // Only check between placements
     if (stonesPlaced === 0) return // Can't lose stones if we don't have any
 
-    // Only check if balance has changed since last check to prevent infinite loops
-    if (lastLossCheckBalanceRef.current === balance) return
-    lastLossCheckBalanceRef.current = balance
+    // Only check if equity has changed since last check to prevent infinite loops
+    if (lastLossCheckBalanceRef.current === equity) return
+    lastLossCheckBalanceRef.current = equity
 
-    console.log(`[Loss Check] Balance: $${balance.toFixed(2)}, Starting: $${startingBalance.toFixed(2)}, Loss: ${((1 - balance/startingBalance) * 100).toFixed(1)}%`)
+    console.log(`[Loss Check] Equity: $${equity.toFixed(2)}, Starting: $${startingBalance.toFixed(2)}, Loss: ${((1 - equity/startingBalance) * 100).toFixed(1)}%`)
 
-    // Check if we've hit a loss threshold
-    const loseCount = stonesToLoseFromDrawdown(balance, startingBalance, stonesPlaced)
+    // Check if we've hit a loss threshold based on equity (not balance)
+    const loseCount = stonesToLoseFromDrawdown(equity, startingBalance, stonesPlaced)
 
     if (loseCount > 0) {
-      const severity = calculateLossSeverity(balance, startingBalance)
+      const severity = calculateLossSeverity(equity, startingBalance)
       console.log(`[Loss Event Triggered] Stones to lose: ${loseCount}, Severity: ${severity.toFixed(2)}`)
 
       // Apply the P&L penalty (deduct from balance)
@@ -1288,7 +1293,7 @@ export function GameContainer() {
       // Trigger the visual tumble effect
       triggerLossEvent(hoverStance ?? DEFAULT_STANCE, loseCount, severity)
     }
-  }, [phase, stonesPlaced, triggerLossEvent, hoverStance, balance, startingBalance, accountState])
+  }, [phase, stonesPlaced, triggerLossEvent, hoverStance, equity, startingBalance, accountState])
 
   return (
     <div ref={containerRef} className="relative touch-none">
