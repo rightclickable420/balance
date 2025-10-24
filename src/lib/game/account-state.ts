@@ -26,6 +26,9 @@ interface AccountState {
   positionNotional: number
   history: AccountSnapshot[]
   unrealizedPnl: number
+  // Track current position details
+  currentPositionEntryPrice: number | null
+  currentPositionStance: Stance
   seedPrice: (price: number) => void
   registerCandle: (candle: Candle, stance: Stance) => number
   updateUnrealizedPnl: (currentPrice: number, stance: Stance) => void
@@ -44,6 +47,8 @@ export const useAccountState = create<AccountState>((set, get) => ({
   positionNotional: DEFAULT_POSITION_NOTIONAL,
   history: [],
   unrealizedPnl: 0,
+  currentPositionEntryPrice: null,
+  currentPositionStance: "flat",
 
   seedPrice: (price) => {
     if (!Number.isFinite(price)) return
@@ -54,14 +59,56 @@ export const useAccountState = create<AccountState>((set, get) => ({
     if (!Number.isFinite(currentPrice)) return
 
     const state = get()
-    const prevPrice = state.lastPrice
-    if (prevPrice === null || !Number.isFinite(prevPrice)) {
-      set({ unrealizedPnl: 0, equity: state.balance })
+
+    // Check if we're flipping positions (changing stance)
+    const isFlip = state.currentPositionStance !== stance && state.currentPositionStance !== "flat"
+
+    // If flipping or opening new position, we need to close the old position first
+    if (isFlip && state.currentPositionEntryPrice !== null) {
+      // Close the current position and realize P&L
+      const entryPrice = state.currentPositionEntryPrice
+      const direction = state.currentPositionStance === "long" ? 1 : state.currentPositionStance === "short" ? -1 : 0
+      const returnPct = entryPrice > 0 ? (currentPrice - entryPrice) / entryPrice : 0
+      const realizedFromFlip = direction * returnPct * state.positionNotional
+
+      // Update balance with the realized P&L from closing
+      const newBalance = state.balance + realizedFromFlip
+      const newRealizedPnl = state.realizedPnl + realizedFromFlip
+
+      set({
+        balance: newBalance,
+        realizedPnl: newRealizedPnl,
+        currentPositionEntryPrice: currentPrice, // New position entry
+        currentPositionStance: stance,
+        unrealizedPnl: 0, // Fresh position starts at 0 unrealized
+        equity: newBalance,
+        lastPrice: currentPrice,
+      })
       return
     }
 
+    // If opening a new position from flat or first position
+    if (state.currentPositionEntryPrice === null || state.currentPositionStance === "flat") {
+      set({
+        currentPositionEntryPrice: currentPrice,
+        currentPositionStance: stance,
+        unrealizedPnl: 0,
+        equity: state.balance,
+      })
+      return
+    }
+
+    // Normal case: update unrealized P&L for current position
+    const entryPrice = state.currentPositionEntryPrice
     const direction = stance === "long" ? 1 : stance === "short" ? -1 : 0
-    const returnPct = prevPrice > 0 ? (currentPrice - prevPrice) / prevPrice : 0
+
+    if (direction === 0) {
+      // Flat stance = no position
+      set({ unrealizedPnl: 0, equity: state.balance, currentPositionStance: "flat" })
+      return
+    }
+
+    const returnPct = entryPrice > 0 ? (currentPrice - entryPrice) / entryPrice : 0
     const unrealized = direction * returnPct * state.positionNotional
     const nextEquity = state.balance + unrealized
 
@@ -77,12 +124,10 @@ export const useAccountState = create<AccountState>((set, get) => ({
     }
 
     const state = get()
-    const prevPrice = state.lastPrice ?? candle.open
-    const price = candle.close
-    const direction = stance === "long" ? 1 : stance === "short" ? -1 : 0
 
-    const returnPct = prevPrice > 0 ? (price - prevPrice) / prevPrice : 0
-    const delta = direction * returnPct * state.positionNotional
+    // When placing a stone, we're closing the current position
+    // The unrealized P&L should already be calculated correctly
+    const delta = state.unrealizedPnl
     const nextBalance = state.balance + delta
     const nextRealized = state.realizedPnl + delta
     const nextEquity = nextBalance
@@ -105,9 +150,11 @@ export const useAccountState = create<AccountState>((set, get) => ({
       balance: nextBalance,
       realizedPnl: nextRealized,
       equity: nextEquity,
-      lastPrice: price,
+      lastPrice: candle.close,
       history: nextHistory,
       unrealizedPnl: 0, // Reset unrealized when we realize the P&L
+      currentPositionEntryPrice: null, // Position is closed
+      currentPositionStance: "flat", // No active position after placing stone
     })
 
     return delta

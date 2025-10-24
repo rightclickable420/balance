@@ -413,14 +413,14 @@ export function GameContainer() {
     [syncTowerOffset],
   )
 
-  const consumeNextCandleVisual = useCallback(() => {
+  const consumeNextCandleVisual = useCallback((stance: Stance = "flat") => {
     const candle = candleSourceRef.current.next()
     const provider = candleSourceRef.current.getSource()
     setDataProvider(provider)
     const evaluation = computeFeatures(featureStateRef.current, candle)
     featureStateRef.current = evaluation.state
     lastFeaturesRef.current = evaluation.features
-    const visual = featuresToStoneVisual(evaluation.features, candle.timestamp)
+    const visual = featuresToStoneVisual(evaluation.features, candle.timestamp, stance)
     return { candle, evaluation, visual }
   }, [setDataProvider])
 
@@ -543,7 +543,8 @@ export function GameContainer() {
     const engine = engineRef.current
     if (!engine) return
 
-    const { candle, evaluation, visual } = consumeNextCandleVisual()
+    const initialStance = DEFAULT_STANCE  // Initial stance for new hover stone
+    const { candle, evaluation, visual } = consumeNextCandleVisual(initialStance)
     setLatestFeatures(evaluation.features)
     // Don't register P&L yet - user can still change stance during hover
     // P&L will be registered when stone is finalized
@@ -569,8 +570,8 @@ export function GameContainer() {
     const { baseOrientation: flatBase } = resolveBaseOrientation(prevTopAngle, 0)
     const flatAngle = normalizeAngle(flatBase - trapezoid.metrics.bottomAngleLocal)
 
-    const stance = hoverStance ?? DEFAULT_STANCE
-    const initialAngle = stance === "short" ? shortAngle : stance === "flat" ? flatAngle : longAngle
+    const hoverInitialStance = hoverStance ?? DEFAULT_STANCE
+    const initialAngle = hoverInitialStance === "short" ? shortAngle : hoverInitialStance === "flat" ? flatAngle : longAngle
     const vertices = orientVertices(localVertices, initialAngle)
     const metricsWorld = deriveWorldMetrics(trapezoid.metrics, initialAngle)
     const highlightAngle = normalizeAngle(metricsWorld.topAngle)
@@ -602,7 +603,7 @@ export function GameContainer() {
       candle,
       bounds,
       spawnedAt: Date.now(),
-      stance,
+      stance: hoverInitialStance,
       features: evaluation.features,
       angle: initialAngle,
       angleLong: longAngle,
@@ -623,7 +624,7 @@ export function GameContainer() {
     decisionDurationRef.current = DEFAULT_CONFIG.dropCadence * DEFAULT_CONFIG.decisionWindow
     decisionDeadlineRef.current = hoverStone.spawnedAt + decisionDurationRef.current
     hoverModulationTimerRef.current = hoverStone.spawnedAt
-    applyAlignmentSample(evaluation.features, stance)
+    applyAlignmentSample(evaluation.features, hoverInitialStance)
     updateForceIndicators(alignmentSampleRef.current.score)
     syncTowerOffset()
     armNextDrop()
@@ -876,7 +877,7 @@ export function GameContainer() {
       accountState.reset()
       let support = DEFAULT_STACK_ORIENTATION
       for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
-        const { visual } = consumeNextCandleVisual()
+        const { visual } = consumeNextCandleVisual("flat")  // Initial stack uses flat stance
         const trapezoid = makeTrapezoidFromAngles({
           widthBottom: visual.geometry.widthBottom,
           height: visual.geometry.height,
@@ -1017,7 +1018,7 @@ export function GameContainer() {
       const elapsed = now - hoverModulationTimerRef.current
 
       if (elapsed >= MODULATION_INTERVAL && hover.updatesApplied < hover.maxUpdates) {
-        const { candle, evaluation, visual } = consumeNextCandleVisual()
+        const { candle, evaluation, visual } = consumeNextCandleVisual(hover.stance)
         setLatestFeatures(evaluation.features)
 
         // Update alignment with new features and current stance

@@ -1,6 +1,8 @@
 import type { Features } from "@/lib/data/features"
 import type { StoneParams } from "@/lib/types"
+import type { Stance } from "./game-state"
 import { clamp, clamp01, hslToHex, lerp } from "./math"
+import { computeRawAlignment } from "./alignment"
 
 export interface StoneGeometryInput {
   widthBottom: number
@@ -21,7 +23,7 @@ export interface StoneVisual {
   strength: number
 }
 
-export const featuresToStoneVisual = (features: Features, seed: number): StoneVisual => {
+export const featuresToStoneVisual = (features: Features, seed: number, stance: Stance = "flat"): StoneVisual => {
   const momentum = features.momentum
   const volatility = features.volatility
   const volume = features.volume
@@ -49,12 +51,31 @@ export const featuresToStoneVisual = (features: Features, seed: number): StoneVi
     restitution,
   }
 
-  const hue = clamp(32 - 55 * momentum + 10 * order, -10, 60)
-  const saturation = clamp01(0.35 + 0.45 * volatility + 0.1 * regime)
-  const lightness = clamp01(0.8 - 0.3 * volume + 0.08 * (0.5 - regime))
+  // Calculate alignment score for color mapping
+  const alignment = computeRawAlignment(features, stance)
 
-  const color = hslToHex((hue + 360) % 360, saturation, lightness)
-  const facetStrength = clamp01(lerp(0.25, 0.75, Math.abs(momentum)) + volatility * 0.2)
+  // Map alignment to colors:
+  // Positive alignment (stance matches market) → Green/Teal (hue ~160-180)
+  // Negative alignment (against market) → Red/Magenta (hue ~340-360)
+  // Neutral/Flat → Yellow/Amber (hue ~40-60)
+  let hue: number
+  if (stance === "flat" || Math.abs(alignment) < 0.1) {
+    // Neutral/Flat → Yellow/Amber
+    hue = 45
+  } else if (alignment > 0) {
+    // Positive alignment → Green/Teal (hue increases with alignment strength)
+    hue = lerp(120, 180, clamp01(alignment))
+  } else {
+    // Negative alignment → Red/Magenta
+    hue = lerp(360, 340, clamp01(-alignment))
+  }
+
+  const alignmentStrength = Math.abs(alignment)
+  const saturation = clamp01(0.45 + 0.35 * alignmentStrength + 0.15 * volatility)
+  const lightness = clamp01(0.55 - 0.15 * alignmentStrength + 0.1 * (1 - volatility))
+
+  const color = hslToHex(hue % 360, saturation, lightness)
+  const facetStrength = clamp01(lerp(0.25, 0.75, alignmentStrength) + volatility * 0.2)
 
   const widthBase = clamp(params.radius * params.aspect, 32, 160)
   const widthBottom = clamp(widthBase * (0.9 + 0.25 * volume + 0.1 * (1 - volatility)), 28, 164)
