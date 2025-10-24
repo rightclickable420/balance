@@ -137,23 +137,10 @@ export function GameUI() {
             <div className="text-3xl font-black text-foreground tabular-nums tracking-tight leading-none mt-0.5">
               ${balance.toFixed(2)}
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <div
-                className={`text-xs uppercase tracking-wider font-bold ${
-                  realizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"
-                }`}
-              >
-                {realizedPnl >= 0 ? "+" : ""}${Math.abs(realizedPnl).toFixed(2)}
-              </div>
-              {phase === "hovering" && unrealizedPnl !== 0 && (
-                <div
-                  className={`text-xs uppercase tracking-wider font-bold ${
-                    unrealizedPnl >= 0 ? "text-emerald-400/70" : "text-rose-400/70"
-                  }`}
-                >
-                  ({unrealizedPnl >= 0 ? "+" : ""}${Math.abs(unrealizedPnl).toFixed(2)})
-                </div>
-              )}
+            <div className="text-xs uppercase tracking-wider font-bold mt-0.5">
+              <span className={realizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                Realized: {realizedPnl >= 0 ? "+" : ""}${Math.abs(realizedPnl).toFixed(2)}
+              </span>
             </div>
           </div>
 
