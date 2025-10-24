@@ -84,6 +84,7 @@ export function GameUI() {
   const equity = useAccountState((state) => state.equity)
   const leverage = useAccountState((state) => state.leverage)
   const setLeverage = useAccountState((state) => state.setLeverage)
+  const isLiquidated = useAccountState((state) => state.isLiquidated)
 
   console.log(
     `[v0] GameUI render - stones: ${stonesPlaced}, phase: ${phase}, canDecide: ${canDecide}, stance: ${hoverStance}, energyPhase: ${energyPhase}`,
@@ -160,7 +161,12 @@ export function GameUI() {
 
           <div className="flex flex-col">
             <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Equity</div>
-            <div className="text-3xl font-black text-foreground tabular-nums tracking-tight leading-none mt-0.5">
+            <div className={`text-3xl font-black tabular-nums tracking-tight leading-none mt-0.5 ${
+              equity <= 0 ? 'text-rose-500 animate-pulse' :
+              equity < balance * 0.2 ? 'text-rose-400' :
+              equity < balance * 0.5 ? 'text-amber-400' :
+              'text-foreground'
+            }`}>
               ${equity.toFixed(2)}
             </div>
             <div className="text-xs uppercase tracking-wider text-muted-foreground/70 font-bold mt-0.5">
@@ -340,6 +346,23 @@ export function GameUI() {
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Liquidation Overlay */}
+      {isLiquidated && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-none z-50">
+          <div className="flex flex-col items-center gap-6 animate-pulse">
+            <div className="text-8xl font-black text-rose-500 uppercase tracking-widest">
+              LIQUIDATED
+            </div>
+            <div className="text-2xl text-rose-400 uppercase tracking-wider">
+              Account Balance: $0.00
+            </div>
+            <div className="text-lg text-muted-foreground">
+              Your position was closed due to insufficient equity
+            </div>
           </div>
         </div>
       )}

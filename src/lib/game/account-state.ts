@@ -31,6 +31,7 @@ interface AccountState {
   currentPositionStance: Stance
   // Leverage settings
   leverage: number
+  isLiquidated: boolean
   setLeverage: (leverage: number) => void
   seedPrice: (price: number) => void
   registerCandle: (candle: Candle, stance: Stance) => number
@@ -53,6 +54,7 @@ export const useAccountState = create<AccountState>((set, get) => ({
   currentPositionEntryPrice: null,
   currentPositionStance: "flat",
   leverage: 1, // Default 1x leverage (no leverage)
+  isLiquidated: false,
 
   setLeverage: (leverage) => {
     const clampedLeverage = clampNumber(leverage, 1, 20) // Allow 1x to 20x
@@ -123,6 +125,21 @@ export const useAccountState = create<AccountState>((set, get) => ({
     // Apply leverage to P&L calculation
     const unrealized = direction * returnPct * state.positionNotional * state.leverage
     const nextEquity = state.balance + unrealized
+
+    // Check for liquidation
+    if (nextEquity <= 0 && !state.isLiquidated) {
+      console.log(`[LIQUIDATION] Equity fell to $${nextEquity.toFixed(2)} - Account liquidated!`)
+      set({
+        unrealizedPnl: -state.balance, // Loss equals entire balance
+        equity: 0,
+        balance: 0,
+        realizedPnl: -state.startingBalance,
+        isLiquidated: true,
+        currentPositionStance: "flat",
+        currentPositionEntryPrice: null,
+      })
+      return
+    }
 
     set({
       unrealizedPnl: unrealized,
@@ -236,5 +253,9 @@ export const useAccountState = create<AccountState>((set, get) => ({
       equity: DEFAULT_STARTING_BALANCE,
       lastPrice: null,
       history: [],
+      unrealizedPnl: 0,
+      currentPositionEntryPrice: null,
+      currentPositionStance: "flat",
+      isLiquidated: false,
     }),
 }))
