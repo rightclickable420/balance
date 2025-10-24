@@ -82,9 +82,9 @@ npm run lint      # Run ESLint
 
 ## 🎯 Current Snapshot
 
-- **Live Hyperliquid data** delivered through the native websocket stream (mock data remains as an automatic fallback).
+- **Deterministic mock generator** now powers the cadence by default; the Hyperliquid feed is temporarily disabled due to connection instability.
 - **Hover stone morphing** smoothly transitions geometry, color, and stance alignment when new candles arrive.
-- **Loss events** fire in any phase: persistent misalignment kicks the tower, applies a mock account penalty, and restacks the tower from the physics world.
+- **Scoped loss events** now only release the top stones (unless liquidating the whole stack) and remove them once they fall off-screen.
 - **Mock account ledger** tracks balance, realized PnL, and equity based on the active stance and incoming candles.
 - **Stance persistence** mirrors trader behavior—long, short, or flat carry forward until the player flips or discards.
 
@@ -138,22 +138,29 @@ Create a `.env.local` with any of the following (all optional):
 
 | Variable | Purpose |
 | --- | --- |
-| `POLYGON_API_KEY` | Enables live candle retrieval via Polygon’s aggregates API. Without it the game falls back to deterministic mock candles. |
-| `BALANCE_DEFAULT_SYMBOL` | Overrides the default ticker (`SPY`) requested from Polygon. |
+| `BALANCE_DATA_PROVIDER` | Server-side provider selection (`hyperliquid`, `polygon`, or `mock`). The default is `hyperliquid`. |
+| `BALANCE_DEFAULT_SYMBOL` | Default instrument symbol (e.g. `BTC`). |
+| `NEXT_PUBLIC_BALANCE_DATA_PROVIDER` | Client hint for choosing the provider (`hyperliquid`, `polygon`, or `mock`). |
+| `NEXT_PUBLIC_BALANCE_SYMBOL` | Client-side default symbol (match the server value). |
 | `NEXT_PUBLIC_BALANCE_USE_LIVE` | Set to `true` to prefer live candles on the client; otherwise the mock source is used. |
-| `NEXT_PUBLIC_BALANCE_SYMBOL` | Client-side default symbol (must match `BALANCE_DEFAULT_SYMBOL` when live mode is on). |
-| `BALANCE_DATA_PROVIDER` | Server-side provider selection (`polygon`, `hyperliquid`, or `mock`). `hyperliquid` uses the native websocket stream. Defaults to `polygon`. |
-| `NEXT_PUBLIC_BALANCE_DATA_PROVIDER` | Client hint for choosing the provider (`polygon`, `hyperliquid`, or `mock`). |
-| `NEXT_PUBLIC_POLYGON_API_KEY` | Required for Polygon WebSocket authentication (exposed client-side). |
+| `POLYGON_API_KEY` | Optional – only needed if you plan to use Polygon’s REST endpoints. |
+| `NEXT_PUBLIC_POLYGON_API_KEY` | Optional – required if you enable the Polygon websocket client. |
 
 ## ⚠️ Known Issues & Open Tasks
 
-- **Over-eager loss physics**: full-stack tumbling still triggers on many loss events. Only the top few stones should drop (unless fully liquidated), they should fall out of view, and ideally disappear with a brief loss indicator.
-- **Rotation drift**: successive stones gradually rotate vertical. Newly spawned stones need their center of mass re-normalised so they stay horizontal unless deliberately tilted.
-- **Tower sway**: add a subtle data-driven sway deformation to visualise underlying stream tension.
-- **Imminent-loss tremor**: when the hover stone misaligns with the market, the top of the stack should briefly tremble as a warning.
-- **Placement settling**: placed stones should “seat” themselves using gentle physics—correct stance locks in smoothly, bad stance lets stones slide off.
-- **Strength stabiliser**: introduce an opposite effect to sway/tremor—when the user is well aligned, the stack tightens and calms.
+- **Loss aftermath polish** *(in progress)*: top-stone tumble is now scoped, but we still want the stones to poof with a brief loss value indicator as they exit the canvas.
+- **Rotation drift**: successive stones creep toward vertical. Revisit the angle normalization between placement and hover generation so new stones stay horizontally seated.
+- **Tower sway**: add subtle deformation driven by misalignment magnitude to visualise looming risk.
+- **Imminent-loss tremor**: jitter the top of the stack when the hover stone is meaningfully misaligned or when a loss event is imminent.
+- **Placement settling**: when a stone touches down, let it gently rotate/slide into place based on stance; badly aligned stones should slip off.
+- **Strength stabiliser**: introduce the opposite effect of sway/tremor—when conviction is strong, the stack should visibly tighten.
+
+## 👉 Recommended Next Steps
+
+1. **Solve rotation drift** – audit `lastTopAngleRef` usage and physics body angles to ensure spawn orientation matches the stabilized stack.
+2. **Prototype sway + tremor** – derive a normalized misalignment score and feed it into a per-frame transform on the stack transform (small sin/cos offsets).
+3. **Placement settling** – experiment with briefly enabling physics for the new stone using springs or easing before freezing it again.
+4. **Loss indicator polish** – spawn a transient UI badge (loss amount) when stones fall, and fade the stone mesh before removal.
 
 ## 🎨 Design System
 

@@ -25,8 +25,10 @@ interface AccountState {
   lastPrice: number | null
   positionNotional: number
   history: AccountSnapshot[]
+  unrealizedPnl: number
   seedPrice: (price: number) => void
   registerCandle: (candle: Candle, stance: Stance) => number
+  updateUnrealizedPnl: (currentPrice: number, stance: Stance) => void
   applyLossPenalty: (loseCount: number, severity: number) => number
   reset: () => void
 }
@@ -41,10 +43,32 @@ export const useAccountState = create<AccountState>((set, get) => ({
   lastPrice: null,
   positionNotional: DEFAULT_POSITION_NOTIONAL,
   history: [],
+  unrealizedPnl: 0,
 
   seedPrice: (price) => {
     if (!Number.isFinite(price)) return
     set({ lastPrice: price })
+  },
+
+  updateUnrealizedPnl: (currentPrice, stance) => {
+    if (!Number.isFinite(currentPrice)) return
+
+    const state = get()
+    const prevPrice = state.lastPrice
+    if (prevPrice === null || !Number.isFinite(prevPrice)) {
+      set({ unrealizedPnl: 0, equity: state.balance })
+      return
+    }
+
+    const direction = stance === "long" ? 1 : stance === "short" ? -1 : 0
+    const returnPct = prevPrice > 0 ? (currentPrice - prevPrice) / prevPrice : 0
+    const unrealized = direction * returnPct * state.positionNotional
+    const nextEquity = state.balance + unrealized
+
+    set({
+      unrealizedPnl: unrealized,
+      equity: nextEquity,
+    })
   },
 
   registerCandle: (candle, stance) => {
@@ -83,6 +107,7 @@ export const useAccountState = create<AccountState>((set, get) => ({
       equity: nextEquity,
       lastPrice: price,
       history: nextHistory,
+      unrealizedPnl: 0, // Reset unrealized when we realize the P&L
     })
 
     return delta

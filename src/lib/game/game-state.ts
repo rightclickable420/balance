@@ -31,6 +31,15 @@ export interface GameState {
   latestFeatures: Features | null
   decisionProgress: number
   dataProvider: string
+  alignmentScore: number
+  alignmentVelocity: number
+  lastAlignmentUpdate: number
+  energyBudget: number
+  energyPhase: "calm" | "building" | "critical"
+  energyCooldownUntil: number
+  stabilizerStrength: number
+  disturberStrength: number
+  disturberDirection: number
 
   // Actions
   setPhase: (phase: GamePhase) => void
@@ -52,6 +61,9 @@ export interface GameState {
   setLatestFeatures: (features: Features | null) => void
   setDecisionProgress: (progress: number) => void
   setDataProvider: (provider: string) => void
+  setAlignmentScore: (score: number, velocity: number, timestamp: number) => void
+  setEnergyState: (budget: number, phase: "calm" | "building" | "critical", cooldownUntil: number) => void
+  setForceStrengths: (stabilizer: number, disturber: number, direction?: number) => void
   reset: () => void
 }
 
@@ -75,6 +87,15 @@ export const useGameState = create<GameState>((set) => ({
   latestFeatures: null,
   decisionProgress: 0,
   dataProvider: "mock",
+  alignmentScore: 0,
+  alignmentVelocity: 0,
+  lastAlignmentUpdate: 0,
+  energyBudget: 0,
+  energyPhase: "calm",
+  energyCooldownUntil: 0,
+  stabilizerStrength: 0,
+  disturberStrength: 0,
+  disturberDirection: 0,
 
   // Actions
   setPhase: (phase) => set({ phase }),
@@ -99,6 +120,12 @@ export const useGameState = create<GameState>((set) => ({
   setLatestFeatures: (latestFeatures) => set({ latestFeatures }),
   setDecisionProgress: (decisionProgress) => set({ decisionProgress }),
   setDataProvider: (dataProvider) => set({ dataProvider }),
+  setAlignmentScore: (alignmentScore, alignmentVelocity, lastAlignmentUpdate) =>
+    set({ alignmentScore, alignmentVelocity, lastAlignmentUpdate }),
+  setEnergyState: (energyBudget, energyPhase, energyCooldownUntil) =>
+    set({ energyBudget, energyPhase, energyCooldownUntil }),
+  setForceStrengths: (stabilizerStrength, disturberStrength, disturberDirection = 0) =>
+    set({ stabilizerStrength, disturberStrength, disturberDirection }),
   reset: () =>
     set({
       phase: "waiting",
@@ -119,5 +146,14 @@ export const useGameState = create<GameState>((set) => ({
       latestFeatures: null,
       decisionProgress: 0,
       dataProvider: "mock",
+      alignmentScore: 0,
+      alignmentVelocity: 0,
+      lastAlignmentUpdate: 0,
+      energyBudget: 0,
+      energyPhase: "calm",
+      energyCooldownUntil: 0,
+      stabilizerStrength: 0,
+      disturberStrength: 0,
+      disturberDirection: 0,
     }),
 }))

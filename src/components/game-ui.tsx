@@ -17,6 +17,24 @@ const stanceAccent: Record<Stance, string> = {
   flat: "text-amber-300",
 }
 
+const phaseAccent: Record<"calm" | "building" | "critical", string> = {
+  calm: "text-emerald-300",
+  building: "text-amber-300",
+  critical: "text-rose-300",
+}
+
+const phaseBar: Record<"calm" | "building" | "critical", string> = {
+  calm: "bg-emerald-400/70",
+  building: "bg-amber-300/70",
+  critical: "bg-rose-400/70",
+}
+
+const phaseLabels: Record<"calm" | "building" | "critical", string> = {
+  calm: "Calm",
+  building: "Building",
+  critical: "Critical",
+}
+
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
 
 const signedColor = (value: number) => {
@@ -45,13 +63,28 @@ const featureDescriptors: Array<{ key: keyof Features; label: string; variant: "
 ]
 
 export function GameUI() {
-  const { stonesPlaced, canDecide, phase, hoverStance, latestFeatures, decisionProgress, dataProvider } = useGameState()
+  const {
+    stonesPlaced,
+    canDecide,
+    phase,
+    hoverStance,
+    latestFeatures,
+    decisionProgress,
+    dataProvider,
+    energyPhase,
+    energyBudget,
+    stabilizerStrength,
+    disturberStrength,
+    alignmentScore,
+    alignmentVelocity,
+  } = useGameState()
   const balance = useAccountState((state) => state.balance)
   const realizedPnl = useAccountState((state) => state.realizedPnl)
+  const unrealizedPnl = useAccountState((state) => state.unrealizedPnl)
   const equity = useAccountState((state) => state.equity)
 
   console.log(
-    `[v0] GameUI render - stones: ${stonesPlaced}, phase: ${phase}, canDecide: ${canDecide}, stance: ${hoverStance}`,
+    `[v0] GameUI render - stones: ${stonesPlaced}, phase: ${phase}, canDecide: ${canDecide}, stance: ${hoverStance}, energyPhase: ${energyPhase}`,
   )
 
   // Test if basic JavaScript works (only on client side)
@@ -74,75 +107,160 @@ export function GameUI() {
     if (normalized === "default") return "Live"
     return "Mock Data"
   })()
+  const dropLabel =
+    hoverStance === "flat"
+      ? "Flat stance skips this stone"
+      : canDecide
+        ? "Auto drop armed"
+        : "Dropping"
+  const dropTone =
+    hoverStance === "flat"
+      ? "text-amber-300"
+      : canDecide
+        ? "text-accent"
+        : "text-muted-foreground"
+  const stabilityWidth = clamp01(energyBudget)
+  const alignmentTone = alignmentScore >= 0 ? "text-emerald-300" : "text-rose-300"
+  const alignmentLabel = alignmentScore >= 0 ? "Favorable" : "Against"
 
   return (
     <div className="pointer-events-none">
-      <div className="absolute top-4 left-4 right-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-3">
-          <div className="w-44 flex flex-col gap-2">
-            {phase === "hovering" && (
-              <div className="bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border text-right">
-                <div className="text-xs text-muted-foreground uppercase tracking-wide">Stance</div>
-                <div className={`text-sm font-semibold ${stanceAccent[hoverStance]}`}>{stanceLabels[hoverStance]}</div>
-                <div className="mt-1 h-1 w-full rounded-full bg-white/10 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-100 ease-out ${
-                      canDecide ? "bg-accent" : "bg-muted-foreground/40"
-                    }`}
-                    style={{ width: `${progressWidth * 100}%` }}
-                  />
-                </div>
+      {/* Top Bar - Account & Status */}
+      <div className="absolute top-0 left-0 right-0 h-20 flex items-center justify-between px-6 bg-gradient-to-b from-black/60 to-transparent backdrop-blur-sm border-b border-white/5">
+        {/* Left - Balance & Equity */}
+        <div className="flex items-center gap-6">
+          <div className="flex flex-col">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Balance</div>
+            <div className="text-3xl font-black text-foreground tabular-nums tracking-tight leading-none mt-0.5">
+              ${balance.toFixed(2)}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <div
+                className={`text-xs uppercase tracking-wider font-bold ${
+                  realizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                {realizedPnl >= 0 ? "+" : ""}${Math.abs(realizedPnl).toFixed(2)}
+              </div>
+              {phase === "hovering" && unrealizedPnl !== 0 && (
                 <div
-                  className={`mt-1 text-[11px] uppercase tracking-wide ${
-                    canDecide ? "text-accent" : "text-muted-foreground"
+                  className={`text-xs uppercase tracking-wider font-bold ${
+                    unrealizedPnl >= 0 ? "text-emerald-400/70" : "text-rose-400/70"
                   }`}
                 >
-                  {canDecide ? "Decision Window" : "Locked"}
+                  ({unrealizedPnl >= 0 ? "+" : ""}${Math.abs(unrealizedPnl).toFixed(2)})
                 </div>
-              </div>
-            )}
-            <div className="bg-card/60 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-border text-[11px] uppercase tracking-wide text-muted-foreground text-right">
-              Data Source: {providerDisplay}
+              )}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-start gap-3">
-            <div className="bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border">
-              <div className="text-xs text-muted-foreground uppercase tracking-wide">Balance</div>
-              <div className="text-2xl font-bold text-foreground tabular-nums">${balance.toFixed(2)}</div>
-              <div
-                className={`text-[11px] uppercase tracking-wide ${
-                  realizedPnl >= 0 ? "text-emerald-300" : "text-rose-300"
-                }`}
-              >
-                {realizedPnl >= 0 ? "+" : ""}
-                {realizedPnl.toFixed(2)} pnl
-              </div>
+          <div className="h-12 w-px bg-white/10" />
+
+          <div className="flex flex-col">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Equity</div>
+            <div className="text-3xl font-black text-foreground tabular-nums tracking-tight leading-none mt-0.5">
+              ${equity.toFixed(2)}
             </div>
-            <div className="bg-card/80 backdrop-blur-sm px-4 py-2 rounded-lg border border-border">
-              <div className="text-xs text-muted-foreground uppercase tracking-wide">Equity</div>
-              <div className="text-2xl font-bold text-foreground tabular-nums">${equity.toFixed(2)}</div>
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Stones {stonesPlaced}</div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground/70 font-bold mt-0.5">
+              {stonesPlaced} Stones
             </div>
           </div>
         </div>
 
+        {/* Center - Data Source */}
+        <div className="flex flex-col items-center">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Data Source</div>
+          <div className="text-sm font-black text-accent uppercase tracking-wider mt-1">{providerDisplay}</div>
+        </div>
+
+        {/* Right - Stance & Timer */}
+        {phase === "hovering" && (
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-end">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Position</div>
+              <div className={`text-4xl font-black tracking-tight leading-none mt-0.5 ${stanceAccent[hoverStance]}`}>
+                {stanceLabels[hoverStance]}
+              </div>
+            </div>
+            <div className="w-32 flex flex-col gap-1.5">
+              <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-100 ease-out ${
+                    canDecide ? "bg-accent shadow-lg shadow-accent/50" : "bg-muted-foreground/40"
+                  }`}
+                  style={{ width: `${progressWidth * 100}%` }}
+                />
+              </div>
+              <div className={`text-[10px] uppercase tracking-widest font-bold text-right ${dropTone}`}>{dropLabel}</div>
+            </div>
+          </div>
+        )}
+
         {phase === "placing" && (
-          <div className="bg-card/60 backdrop-blur-sm px-4 py-1.5 rounded-lg border border-border text-xs text-muted-foreground uppercase tracking-wide">
+          <div className="text-2xl text-accent uppercase tracking-widest font-black animate-pulse">
             Dropping
           </div>
         )}
       </div>
 
+      {/* Left Panel - Stability & Alignment */}
+      <div className="absolute left-6 top-28 w-72">
+        <div className="bg-card/90 backdrop-blur-md rounded-xl border-2 border-border shadow-2xl p-5">
+          <div className="flex items-baseline justify-between mb-3">
+            <div className="text-xs text-muted-foreground uppercase tracking-widest font-bold">Stability</div>
+            <div className={`text-2xl font-black tracking-tight ${phaseAccent[energyPhase]}`}>
+              {phaseLabels[energyPhase]}
+            </div>
+          </div>
+
+          <div className="h-2.5 w-full rounded-full bg-white/10 overflow-hidden mb-4">
+            <div
+              className={`h-full rounded-full transition-all duration-200 ease-out ${phaseBar[energyPhase]}`}
+              style={{ width: `${stabilityWidth * 100}%` }}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="flex flex-col">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Stabilizer</div>
+              <div className="text-xl font-black text-emerald-400 tabular-nums">{stabilizerStrength.toFixed(2)}</div>
+            </div>
+            <div className="flex flex-col">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Disturber</div>
+              <div className="text-xl font-black text-rose-400 tabular-nums">{disturberStrength.toFixed(2)}</div>
+            </div>
+          </div>
+
+          <div className="h-px w-full bg-white/10 my-4" />
+
+          <div className="flex items-baseline justify-between">
+            <div className="text-xs text-muted-foreground uppercase tracking-widest font-bold">Alignment</div>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-xl font-black ${alignmentTone}`}>{alignmentLabel}</span>
+              <span className={`text-2xl font-black tabular-nums ${alignmentTone}`}>{alignmentScore.toFixed(2)}</span>
+            </div>
+          </div>
+          <div className="text-[10px] text-muted-foreground font-medium mt-1 text-right">
+            Δ {alignmentVelocity.toFixed(3)}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom - Market Features */}
       {latestFeatures && (
-        <div className="absolute bottom-6 left-4 flex gap-1">
+        <div className="absolute bottom-0 left-0 right-0 h-16 flex items-center justify-center gap-8 px-6 bg-gradient-to-t from-black/60 to-transparent backdrop-blur-sm border-t border-white/5">
           {featureDescriptors.map(({ key, label, variant }) => {
             const value = latestFeatures[key]
             const color = variant === "signed" ? signedColor(value) : magnitudeColor(value)
             return (
-              <div key={key} className="flex flex-col items-center text-[10px] uppercase tracking-wider text-white/60">
-                <div className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
-                <div>{label}</div>
+              <div key={key} className="flex items-center gap-2.5 w-20">
+                <div className="h-3 w-3 rounded-full shadow-lg flex-shrink-0" style={{ background: color, boxShadow: `0 0 12px ${color}` }} />
+                <div className="flex flex-col flex-1 min-w-0">
+                  <div className="text-[10px] uppercase tracking-widest text-white/50 font-bold leading-none">{label}</div>
+                  <div className="text-sm font-black tabular-nums leading-none mt-1 w-full text-left" style={{ color }}>
+                    {value >= 0 ? '\u00A0' : ''}{value.toFixed(2)}
+                  </div>
+                </div>
               </div>
             )
           })}

@@ -1,13 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import Matter from "matter-js"
 import { GameCanvas } from "./game-canvas"
-import { PhysicsEngine } from "@/lib/game/physics-engine"
-import { createCandleSource } from "@/lib/data/candle-source-factory"
+import { useGestureControls } from "@/hooks/use-gesture-controls"
+import { PhysicsEngine, type Stone } from "@/lib/game/physics-engine"
 import {
   makeTrapezoidFromAngles,
   rotatePoint,
   rotatePoints as rotatePointsImmediate,
+  type AnchoredTrapezoid,
   type Point,
   type TrapezoidMetrics,
 } from "@/lib/game/stone-generator"
@@ -16,62 +18,48 @@ import { useGameState, type Stance } from "@/lib/game/game-state"
 import { useAccountState } from "@/lib/game/account-state"
 import { initFeatureState, computeFeatures, type Features } from "@/lib/data/features"
 import { featuresToStoneVisual, type StoneGeometryInput } from "@/lib/game/feature-mapper"
-import { stonesToLose } from "@/lib/game/loss"
-import { AudioManager } from "@/lib/audio/audio-manager"
+import { computeRawAlignment, updateAlignment, type AlignmentSample } from "@/lib/game/alignment"
 import type { Candle, StoneParams } from "@/lib/types"
-import { useGestureControls } from "@/hooks/use-gesture-controls"
-// import { AudioManager } from "@/lib/audio/audio-manager"
+import { createCandleSource } from "@/lib/data/candle-source-factory"
+import { stonesToLose } from "@/lib/game/loss"
 
 const CANVAS_WIDTH = 800
 const CANVAS_HEIGHT = 600
 const GROUND_Y = CANVAS_HEIGHT - 50
 const HOVER_VERTICAL_OFFSET = 120
-const STACK_GAP = -4
 const INITIAL_STACK_COUNT = 10
 const DESIRED_TOP_SCREEN_Y = 240
 const STONE_CANDLE_WINDOW = 30
-const CANDLE_INTERVAL_MS = 1000
-const HOVER_TRANSITION_DURATION_MS = 650
-const MAX_DIRECTIONAL_OFFSET = Math.PI / 6 // 30 degrees
-const MAX_TOWER_TILT = Math.PI / 4 // 45 degrees
+const PLACEMENT_DURATION_MS = DEFAULT_CONFIG.placementDuration
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
-const clampDirectionalOffset = (offset: number) => clamp(offset, -MAX_DIRECTIONAL_OFFSET, MAX_DIRECTIONAL_OFFSET)
-const lerpScalar = (a: number, b: number, t: number) => a + (b - a) * t
-const lerpAngle = (from: number, to: number, t: number) => {
-  let diff = to - from
-  while (diff > Math.PI) diff -= Math.PI * 2
-  while (diff < -Math.PI) diff += Math.PI * 2
-  return from + diff * t
-}
-const normalizeAngle = (angle: number) => {
+
+const normalizeAngle = (angle: number): number => {
   let result = angle % (Math.PI * 2)
   if (result > Math.PI) result -= Math.PI * 2
   if (result < -Math.PI) result += Math.PI * 2
   return result
 }
-const clampTowerTilt = (angle: number) => clamp(normalizeAngle(angle), -MAX_TOWER_TILT, MAX_TOWER_TILT)
-const resolveBaseOrientation = (prevTopAngle: number, desiredOffset: number) => {
-  const clampedOffset = clampDirectionalOffset(desiredOffset)
-  const baseOrientation = clampTowerTilt(prevTopAngle + clampedOffset)
-  const appliedOffset = normalizeAngle(baseOrientation - prevTopAngle)
-  return { baseOrientation, appliedOffset }
-}
+
+const clampDirectionalOffset = (offset: number) => clamp(offset, -Math.PI / 6, Math.PI / 6)
+
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2)
-const hexToRgb = (hex: string): [number, number, number] => {
-  const normalized = hex.replace("#", "")
-  const value = normalized.length === 6 ? normalized : normalized.padEnd(6, "0")
-  const r = parseInt(value.slice(0, 2), 16)
-  const g = parseInt(value.slice(2, 4), 16)
-  const b = parseInt(value.slice(4, 6), 16)
-  return [r, g, b]
+
+const normalFromAngle = (angle: number): Point => ({
+  x: Math.sin(angle),
+  y: -Math.cos(angle),
+})
+
+type StackOrientation = {
+  angle: number
+  normal: Point
+  supportPoint: Point
 }
-const rgbToHex = (r: number, g: number, b: number): string =>
-  `#${Math.round(r).toString(16).padStart(2, "0")}${Math.round(g).toString(16).padStart(2, "0")}${Math.round(b).toString(16).padStart(2, "0")}`
-const lerpColor = (from: string, to: string, t: number): string => {
-  const [r1, g1, b1] = hexToRgb(from)
-  const [r2, g2, b2] = hexToRgb(to)
-  return rgbToHex(lerpScalar(r1, r2, t), lerpScalar(g1, g2, t), lerpScalar(b1, b2, t))
+
+const DEFAULT_STACK_ORIENTATION: StackOrientation = {
+  angle: 0,
+  normal: normalFromAngle(0),
+  supportPoint: { x: CANVAS_WIDTH / 2, y: GROUND_Y },
 }
 
 type StoneBounds = {
@@ -79,32 +67,11 @@ type StoneBounds = {
   maxY: number
 }
 
-const orientVertices = (local: Point[], angle: number): Point[] => rotatePointsImmediate(local, angle)
-
-const deriveWorldMetrics = (metrics: TrapezoidMetrics, angle: number): StoneWorldMetrics => ({
-  bottomMid: rotatePoint(metrics.bottomMidLocal, angle),
-  topMid: rotatePoint(metrics.topMidLocal, angle),
-  bottomAngle: metrics.bottomAngleLocal + angle,
-  topAngle: metrics.topAngleLocal + angle,
-  bottomWidth: metrics.bottomWidth,
-  topWidth: metrics.topWidth,
-  heightLocal: metrics.heightLocal,
-})
-
-type StoneWorldMetrics = {
-  bottomMid: Point
-  topMid: Point
-  bottomAngle: number
-  topAngle: number
-  bottomWidth: number
-  topWidth: number
-  heightLocal: number
-}
-
 type HoverStone = {
   localVertices: Point[]
   vertices: Point[]
   metricsLocal: TrapezoidMetrics
+  anchored: AnchoredTrapezoid
   metricsWorld: StoneWorldMetrics
   geometry: StoneGeometryInput
   strength: number
@@ -121,50 +88,199 @@ type HoverStone = {
   spawnedAt: number
   stance: Stance
   features: Features
-
   angle: number
   angleLong: number
   angleShort: number
-  prevTopAngle: number
+  angleFlat: number
   highlightAngle: number
   facetStrength: number
+  prevTopAngle: number
 }
 
 type PlacingStone = HoverStone & {
   startY: number
+  settleTargetAngle: number
 }
 
-type HoverTransitionSnapshot = {
-  geometry: StoneGeometryInput
-  strength: number
-  baseOrientation: number
-  color: string
-  facetStrength: number
-  angle: number
-  angleLong: number
-  angleShort: number
-  y: number
-  prevTopAngle: number
-  stance: Stance
+type StoneWorldMetrics = {
+  bottomMid: Point
+  topMid: Point
+  bottomAngle: number
+  topAngle: number
+  bottomWidth: number
+  topWidth: number
+  heightLocal: number
 }
 
-type HoverTransitionTarget = {
-  geometry: StoneGeometryInput
-  strength: number
-  color: string
-  facetStrength: number
-  params: StoneParams
-  candle: Candle
-  features: Features
-  directionalOffset: number
+const orientVertices = (local: Point[], angle: number): Point[] => rotatePointsImmediate(local, angle)
+
+const deriveWorldMetrics = (metrics: TrapezoidMetrics, angle: number): StoneWorldMetrics => ({
+  bottomMid: rotatePoint(metrics.bottomMidLocal, angle),
+  topMid: rotatePoint(metrics.topMidLocal, angle),
+  bottomAngle: metrics.bottomAngleLocal + angle,
+  topAngle: metrics.topAngleLocal + angle,
+  bottomWidth: metrics.bottomWidth,
+  topWidth: metrics.topWidth,
+  heightLocal: metrics.heightLocal,
+})
+
+const computeBounds = (vertices: Point[]): StoneBounds => {
+  let minY = Infinity
+  let maxY = -Infinity
+  for (const { y } of vertices) {
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+  }
+  return { minY, maxY }
 }
 
-type HoverTransition = {
-  from: HoverTransitionSnapshot
-  target: HoverTransitionTarget
-  landingSurface: number
-  elapsed: number
-  duration: number
+const computeBodyTop = (stone: Stone): number => {
+  let top = Infinity
+  for (const vertex of stone.body.vertices ?? []) {
+    if (vertex.y < top) top = vertex.y
+  }
+  return top
+}
+
+const computeAnchoredOffset = (
+  anchor: AnchoredTrapezoid,
+  body: Matter.Body,
+  cosBody: number,
+  sinBody: number,
+  cosAnchor: number,
+  sinAnchor: number,
+  point: Point,
+): Point => {
+  // Note: anchor coordinates use y-up (mathematical), but canvas uses y-down (screen)
+  // Transform: flip Y, negate angle
+  // Standard rotation matrix for angle θ: [cos(θ) -sin(θ); sin(θ) cos(θ)]
+  // For angle -θ (flipped): [cos(θ) sin(θ); -sin(θ) cos(θ)]
+  const anchorY = -point.y
+  const rotatedX = point.x * cosAnchor + anchorY * sinAnchor + anchor.transform.translation.x
+  const rotatedY = -point.x * sinAnchor + anchorY * cosAnchor + anchor.transform.translation.y
+  return {
+    x: rotatedX * cosBody - rotatedY * sinBody,
+    y: rotatedX * sinBody + rotatedY * cosBody,
+  }
+}
+
+const computeAnchoredWorldPoint = (
+  anchor: AnchoredTrapezoid,
+  body: Matter.Body,
+  point: Point,
+): Point => {
+  const cosBody = Math.cos(body.angle ?? 0)
+  const sinBody = Math.sin(body.angle ?? 0)
+  const anchorRotation = anchor.transform.rotation ?? 0
+  const cosAnchor = Math.cos(anchorRotation)
+  const sinAnchor = Math.sin(anchorRotation)
+  const offset = computeAnchoredOffset(anchor, body, cosBody, sinBody, cosAnchor, sinAnchor, point)
+  return {
+    x: body.position.x + offset.x,
+    y: body.position.y + offset.y,
+  }
+}
+
+const solvePlacement = (
+  anchor: AnchoredTrapezoid,
+  bodyAngle: number,
+  support: StackOrientation,
+): { position: Point } => {
+  const anchorRotation = anchor.transform.rotation ?? 0
+  const cosBody = Math.cos(bodyAngle)
+  const sinBody = Math.sin(bodyAngle)
+  const cosAnchor = Math.cos(anchorRotation)
+  const sinAnchor = Math.sin(anchorRotation)
+  const offset = computeAnchoredOffset(anchor, {} as unknown as Matter.Body, cosBody, sinBody, cosAnchor, sinAnchor, {
+    x: 0,
+    y: 0,
+  })
+  return {
+    position: {
+      x: support.supportPoint.x - offset.x,
+      y: support.supportPoint.y - offset.y,
+    },
+  }
+}
+
+const deriveSupportFrame = (stone: Stone | null): StackOrientation => {
+  if (!stone || !stone.anchor) {
+    return DEFAULT_STACK_ORIENTATION
+  }
+  const anchor = stone.anchor
+  // Use the stored topAngle if available to avoid cumulative drift
+  // This is the exact angle we set when placing the stone, not recomputed
+  const angle = typeof stone.topAngle === 'number'
+    ? stone.topAngle
+    : normalizeAngle((stone.body.angle ?? 0) + (-(anchor.transform.rotation ?? 0)) + (-(anchor.metrics.topAngle ?? 0)))
+
+  const topMid =
+    anchor.metrics.topMid ??
+    ({
+      x: 0,
+      y: anchor.metrics.height ?? 0,
+    } as Point)
+  const supportPoint = computeAnchoredWorldPoint(anchor, stone.body, topMid)
+  return {
+    angle,
+    normal: normalFromAngle(angle),
+    supportPoint,
+  }
+}
+
+const seatStoneOnSupport = (
+  stone: Stone | null,
+  support: StackOrientation | null,
+  isFlipped: boolean = false
+) => {
+  if (!stone || !stone.anchor || !support) return
+  const anchor = stone.anchor
+
+  // support.angle is in world (canvas) coordinates
+  // The anchor stores angles in y-up coords, so we negate them
+  const anchorRotation = -(anchor.transform.rotation ?? 0)
+  const topAngleInAnchor = -(anchor.metrics.topAngle ?? 0)
+  const bottomAngleInAnchor = -(anchor.metrics.bottomAngle ?? 0)
+
+  // Calculate body angle: align the BOTTOM face (whichever is physically on bottom) with support
+  // For normal (long/flat): use the geometric bottom
+  // For flipped (short): the geometric TOP is now the physical bottom
+  const bottomFaceAngle = isFlipped ? topAngleInAnchor : bottomAngleInAnchor
+  const targetBodyAngle = normalizeAngle(support.angle - anchorRotation - bottomFaceAngle)
+
+  Matter.Body.setAngle(stone.body, targetBodyAngle)
+  Matter.Body.setAngularVelocity(stone.body, 0)
+  stone.isFlipped = isFlipped
+
+  // Calculate and store the exact top angle to prevent drift accumulation
+  // For normal: geometric top is physical top
+  // For flipped: geometric bottom is physical top
+  const topFaceAngle = isFlipped ? bottomAngleInAnchor : topAngleInAnchor
+  const exactTopAngle = normalizeAngle(targetBodyAngle + anchorRotation + topFaceAngle)
+  stone.topAngle = exactTopAngle
+
+  // Now position the body so the bottom center sits on the support point
+  const bottomCenter = computeAnchoredWorldPoint(anchor, stone.body, { x: 0, y: 0 })
+  const deltaX = support.supportPoint.x - bottomCenter.x
+  const deltaY = support.supportPoint.y - bottomCenter.y
+
+  if (Math.abs(deltaX) > 1e-5 || Math.abs(deltaY) > 1e-5) {
+    Matter.Body.setPosition(stone.body, {
+      x: stone.body.position.x + deltaX,
+      y: stone.body.position.y + deltaY,
+    })
+  }
+
+  Matter.Body.setVelocity(stone.body, { x: 0, y: 0 })
+  Matter.Body.setAngularVelocity(stone.body, 0)
+  stone.supportTargetX = support.supportPoint.x
+}
+
+const resolveBaseOrientation = (prevTopAngle: number, desiredOffset: number) => {
+  const clampedOffset = clampDirectionalOffset(desiredOffset)
+  const baseOrientation = normalizeAngle(prevTopAngle + clampedOffset)
+  const appliedOffset = normalizeAngle(baseOrientation - prevTopAngle)
+  return { baseOrientation, appliedOffset }
 }
 
 const DEFAULT_STANCE: Stance = "long"
@@ -172,41 +288,83 @@ const DEFAULT_STANCE: Stance = "long"
 export function GameContainer() {
   const engineRef = useRef<PhysicsEngine | null>(null)
   const candleSourceRef = useRef(createCandleSource())
-  const audioRef = useRef<AudioManager>(new AudioManager())
-  const animationFrameRef = useRef<number>()
-  const lastTimeRef = useRef<number>(Date.now())
-  const dropTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const marketAlignmentTimeRef = useRef<number>(0)
-  const stoneSequenceRef = useRef<number>(0)
-  const dropStartTimeRef = useRef<number>(Date.now())
-  const nextDropAtRef = useRef<number | null>(null)
-  const stackSurfaceYRef = useRef<number>(GROUND_Y)
-  const stackTopYRef = useRef<number>(GROUND_Y)
-  const towerOffsetTargetRef = useRef<number>(0)
-  const towerOffsetInitializedRef = useRef<boolean>(false)
-  const hoverModulationTimerRef = useRef<number>(0)
-  const decisionDeadlineRef = useRef<number | null>(null)
-  const decisionDurationRef = useRef<number>(0)
+  const alignmentSampleRef = useRef<AlignmentSample>({
+    score: 0,
+    velocity: 0,
+    timestamp: Date.now(),
+  })
   const featureStateRef = useRef(initFeatureState())
   const lastFeaturesRef = useRef<Features | null>(null)
-  const lastTopAngleRef = useRef<number>(0)
-  const hoverTransitionRef = useRef<HoverTransition | null>(null)
+  const lastTopAngleRef = useRef(0)
+  const stackOrientationRef = useRef<StackOrientation>(DEFAULT_STACK_ORIENTATION)
+  const supportFrameRef = useRef<StackOrientation>(DEFAULT_STACK_ORIENTATION)
+  const topStoneRef = useRef<Stone | null>(null)
+  const stackTopYRef = useRef(GROUND_Y)
+  const stackSurfaceYRef = useRef(GROUND_Y)
+  const towerOffsetTargetRef = useRef(0)
+  const towerOffsetInitializedRef = useRef(false)
+  const hoverTransitionRef = useRef<{
+    start: HoverStone
+    target: HoverStone
+    elapsed: number
+    duration: number
+  } | null>(null)
+  const hoverModulationTimerRef = useRef(0)
+  const decisionDeadlineRef = useRef<number | null>(null)
+  const decisionDurationRef = useRef(0)
+  const animationFrameRef = useRef<number>()
+  const lastFrameTimeRef = useRef(Date.now())
+  const nextDropAtRef = useRef<number | null>(null)
+  const dropTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const stoneSequenceRef = useRef(0)
+  const initializedRef = useRef(false)
+
+  const [hoverStoneState, setHoverStoneState] = useState<HoverStone | null>(null)
+  const [placingStoneState, setPlacingStoneState] = useState<PlacingStone | null>(null)
+  const hoverStoneRef = useRef<HoverStone | null>(null)
+  const placingStoneRef = useRef<PlacingStone | null>(null)
 
   const [renderTrigger, setRenderTrigger] = useState(0)
-  const [testCounter, setTestCounter] = useState(0)
-  const [hoverStoneState, setHoverStoneState] = useState<HoverStone | null>(null)
-  const hoverStoneRef = useRef<HoverStone | null>(null)
-  const [placingStoneState, setPlacingStoneState] = useState<PlacingStone | null>(null)
-  const placingStoneRef = useRef<PlacingStone | null>(null)
+  const prepareHoverStoneRef = useRef<() => void>(() => {})
+  const finalizePlacementRef = useRef<() => void>(() => {})
+  const beginPlacementFromHoverRef = useRef<() => void>(() => {})
+
+  const {
+    phase,
+    setPhase,
+    canDecide,
+    setCanDecide,
+    setPlacementProgress,
+    setHoverStance,
+    hoverStance,
+    setDropStartTime,
+    setDecisionProgress,
+    setLatestFeatures,
+    setMarketAlignment,
+    setAlignmentScore,
+    setForceStrengths,
+    setEnergyState,
+    setPhysicsActive,
+    setTowerOffset,
+    timeScale,
+    setDataProvider,
+    incrementStonesPlaced,
+    stonesPlaced,
+    alignmentScore,
+    energyPhase,
+    energyBudget,
+    stabilizerStrength,
+    disturberStrength,
+    decisionProgress,
+  } = useGameState()
+
+  const accountState = useAccountState()
 
   const setHoverStone = useCallback(
     (value: HoverStone | null | ((prev: HoverStone | null) => HoverStone | null)) => {
       setHoverStoneState((prev) => {
-        const next =
-          typeof value === "function"
-            ? (value as (prev: HoverStone | null) => HoverStone | null)(prev)
-            : value
+        const next = typeof value === "function" ? (value as (p: HoverStone | null) => HoverStone | null)(prev) : value
         hoverStoneRef.current = next
         return next
       })
@@ -218,15 +376,87 @@ export function GameContainer() {
     (value: PlacingStone | null | ((prev: PlacingStone | null) => PlacingStone | null)) => {
       setPlacingStoneState((prev) => {
         const next =
-          typeof value === "function"
-            ? (value as (prev: PlacingStone | null) => PlacingStone | null)(prev)
-            : value
+          typeof value === "function" ? (value as (p: PlacingStone | null) => PlacingStone | null)(prev) : value
         placingStoneRef.current = next
         return next
       })
     },
     [],
   )
+
+  const syncTowerOffset = useCallback(() => {
+    const top = stackTopYRef.current
+    const desiredOffset = DESIRED_TOP_SCREEN_Y - top
+    towerOffsetTargetRef.current = desiredOffset
+    if (!towerOffsetInitializedRef.current) {
+      setTowerOffset(desiredOffset)
+      towerOffsetInitializedRef.current = true
+    }
+  }, [setTowerOffset])
+
+  const updateStackReferences = useCallback(
+    (stone: Stone | null) => {
+      topStoneRef.current = stone
+      const orientation = deriveSupportFrame(stone)
+      stackOrientationRef.current = orientation
+      supportFrameRef.current = orientation
+      if (stone) {
+        stackTopYRef.current = computeBodyTop(stone)
+        stackSurfaceYRef.current = orientation.supportPoint.y
+      } else {
+        stackTopYRef.current = GROUND_Y
+        stackSurfaceYRef.current = GROUND_Y
+      }
+      syncTowerOffset()
+      lastTopAngleRef.current = orientation.angle
+    },
+    [syncTowerOffset],
+  )
+
+  const consumeNextCandleVisual = useCallback(() => {
+    const candle = candleSourceRef.current.next()
+    const provider = candleSourceRef.current.getSource()
+    setDataProvider(provider)
+    const evaluation = computeFeatures(featureStateRef.current, candle)
+    featureStateRef.current = evaluation.state
+    lastFeaturesRef.current = evaluation.features
+    const visual = featuresToStoneVisual(evaluation.features, candle.timestamp)
+    return { candle, evaluation, visual }
+  }, [setDataProvider])
+
+  const applyAlignmentSample = useCallback(
+    (features: Features, stance: Stance) => {
+      const now = Date.now()
+      const raw = computeRawAlignment(features, stance)
+      const previous = alignmentSampleRef.current
+      const updated = updateAlignment(previous, raw, now)
+      alignmentSampleRef.current = updated
+      setAlignmentScore(updated.score, updated.velocity, updated.timestamp)
+      setMarketAlignment(updated.score)
+    },
+    [setAlignmentScore, setMarketAlignment],
+  )
+
+  const resetForceIndicators = useCallback(() => {
+    setForceStrengths(0, 0, 0)
+    setEnergyState(0, "calm", 0)
+  }, [setEnergyState, setForceStrengths])
+
+  const recalcStackFromPhysics = useCallback(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    const stones = engine.getStones()
+    if (stones.length === 0) {
+      updateStackReferences(null)
+      return
+    }
+    const topStone = stones.reduce<Stone | null>((highest, candidate) => {
+      if (!candidate) return highest
+      if (!highest) return candidate
+      return computeBodyTop(candidate) < computeBodyTop(highest) ? candidate : highest
+    }, null)
+    updateStackReferences(topStone)
+  }, [updateStackReferences])
 
   const clearDropTimer = useCallback(() => {
     if (dropTimerRef.current) {
@@ -235,595 +465,91 @@ export function GameContainer() {
     }
   }, [])
 
-  const hoverStone = hoverStoneState
-  const placingStone = placingStoneState
-
-  const {
-    phase,
-    setPhase,
-    setDropStartTime,
-    setPhysicsActive,
-    marketAlignment,
-    setMarketAlignment,
-    setPlacementProgress,
-    debugMode,
-    setDebugMode,
-    timeScale,
-    setTimeScale,
-    stonesPlaced,
-    incrementStonesPlaced,
-    canDecide,
-    setCanDecide,
-    setHoverStance,
-    setLatestFeatures,
-    setDecisionProgress,
-    setDataProvider,
-  } = useGameState()
-
-  const isDecisionActive = useCallback(() => {
-    return useGameState.getState().phase === "hovering"
-  }, [])
-
-  const syncTowerOffset = useCallback(() => {
-    const top = stackTopYRef.current
-    const desiredOffset = DESIRED_TOP_SCREEN_Y - top
-    towerOffsetTargetRef.current = desiredOffset
-    if (!towerOffsetInitializedRef.current) {
-      useGameState.setState({ towerOffset: desiredOffset })
-      towerOffsetInitializedRef.current = true
-    }
-  }, [])
-
-  const computeBounds = useCallback((vertices: { x: number; y: number }[]): StoneBounds => {
-    let minY = Infinity
-    let maxY = -Infinity
-    for (const { y } of vertices) {
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
-    }
-    return { minY, maxY }
-  }, [])
-
-  const cloneHoverSnapshot = useCallback((stone: HoverStone): HoverTransitionSnapshot => {
-    return {
-      geometry: { ...stone.geometry },
-      strength: stone.strength,
-      baseOrientation: stone.baseOrientation,
-      color: stone.color,
-      facetStrength: stone.facetStrength,
-      angle: stone.angle,
-      angleLong: stone.angleLong,
-      angleShort: stone.angleShort,
-      y: stone.y,
-      prevTopAngle: stone.prevTopAngle,
-      stance: stone.stance,
-    }
-  }, [])
-
-  const consumeNextCandleVisual = useCallback(() => {
-    const candle = candleSourceRef.current.next()
-    const provider = candleSourceRef.current.getSource()
-    setDataProvider(provider)
-    const { features, state } = computeFeatures(featureStateRef.current, candle)
-    featureStateRef.current = state
-    lastFeaturesRef.current = features
-    const { params, color, facetStrength, geometry, strength } = featuresToStoneVisual(features, candle.timestamp)
-    return { candle, params, color, features, facetStrength, geometry, strength }
-  }, [setDataProvider])
-
-  const consumeCandleWindow = useCallback(
-    (count: number) => {
-      let visual: ReturnType<typeof consumeNextCandleVisual> | null = null
-      for (let i = 0; i < count; i++) {
-        visual = consumeNextCandleVisual()
-      }
-      if (!visual) {
-        throw new Error("Failed to consume candle window")
-      }
-      return visual
-    },
-    [consumeNextCandleVisual],
-  )
-
-  const handleFlip = useCallback(() => {
-    const hover = hoverStoneRef.current
-    if (!hover) return
-    if (!isDecisionActive()) return
-
-    const nextStance: Stance = hover.stance === "short" ? "long" : "short"
-    const nextAngle = nextStance === "short" ? hover.angleShort : hover.angleLong
-    const rotated = orientVertices(hover.localVertices, nextAngle)
-    const metricsWorld = deriveWorldMetrics(hover.metricsLocal, nextAngle)
-    const bounds = computeBounds(rotated)
-    const landingSurface = stackSurfaceYRef.current
-    const targetY = landingSurface - bounds.maxY
-    const hoverY = targetY - HOVER_VERTICAL_OFFSET
-
-    const updated: HoverStone = {
-      ...hover,
-      stance: nextStance,
-      angle: nextAngle,
-      angleLong: hover.angleLong,
-      angleShort: hover.angleShort,
-      vertices: rotated,
-      metricsWorld,
-      bounds,
-      targetY,
-      y: hoverY,
-      highlightAngle: metricsWorld.topAngle,
-    }
-
-    setHoverStone(updated)
-    setHoverStance(nextStance)
-
-    if (hoverTransitionRef.current) {
-      hoverTransitionRef.current = {
-        ...hoverTransitionRef.current,
-        from: cloneHoverSnapshot(updated),
-        elapsed: 0,
-      }
-    }
-  }, [cloneHoverSnapshot, computeBounds, isDecisionActive, setHoverStance, setHoverStone])
-
-  const handleDiscard = useCallback(() => {
-    const hover = hoverStoneRef.current
-    if (!hover) return
-    if (!isDecisionActive()) return
-    if (hover.stance === "flat") return
-
-    const updated: HoverStone = {
-      ...hover,
-      stance: "flat",
-    }
-
-    setHoverStone(updated)
-    setHoverStance("flat")
-    setDecisionProgress(0.2)
-  }, [isDecisionActive, setDecisionProgress, setHoverStance, setHoverStone])
-
-  const recalcStackFromPhysics = useCallback(() => {
-    const engine = engineRef.current
-    if (!engine) return
-
-    const stones = engine.getStones()
-    if (stones.length === 0) {
-      stackTopYRef.current = GROUND_Y
-      stackSurfaceYRef.current = GROUND_Y
-      lastTopAngleRef.current = 0
-      syncTowerOffset()
-      return
-    }
-
-    let top = Infinity
-    for (const stone of stones) {
-      let minY = Infinity
-      for (const vertex of stone.vertices) {
-        if (vertex.y < minY) minY = vertex.y
-      }
-      const stoneTop = stone.body.position.y + minY
-      if (stoneTop < top) {
-        top = stoneTop
-      }
-    }
-
-    stackTopYRef.current = top
-    stackSurfaceYRef.current = top - STACK_GAP
-    lastTopAngleRef.current = 0
-    syncTowerOffset()
-  }, [syncTowerOffset])
-
-  const prepopulateStack = useCallback(() => {
-    const engine = engineRef.current
-    if (!engine) return
-
-    const accountStore = useAccountState.getState()
-    accountStore.reset()
-
-    let surface = GROUND_Y
-    let top = surface
-    let prevTopAngle = 0
-
-    for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
-      const visual = consumeCandleWindow(STONE_CANDLE_WINDOW)
-      const trapezoid = makeTrapezoidFromAngles({
-        widthBottom: visual.geometry.widthBottom,
-        height: visual.geometry.height,
-        taper: visual.geometry.taper,
-        round: visual.geometry.round,
-        betaGlobal: prevTopAngle + visual.geometry.beta,
-        tauGlobal: prevTopAngle + visual.geometry.tau,
-        prevTopAngleGlobal: prevTopAngle,
-        segments: 5,
-      })
-
-      const localVertices = trapezoid.local
-      const { baseOrientation } = resolveBaseOrientation(prevTopAngle, visual.geometry.beta)
-      const angleLong = baseOrientation - trapezoid.metrics.bottomAngleLocal
-      const vertices = orientVertices(localVertices, angleLong)
-      const metricsWorld = deriveWorldMetrics(trapezoid.metrics, angleLong)
-      const highlightAngle = clampTowerTilt(metricsWorld.topAngle)
-      const bounds = computeBounds(vertices)
-
-      const targetY = surface - bounds.maxY
-
-      engine.addStone(vertices, visual.params, CANVAS_WIDTH / 2, targetY, visual.color, highlightAngle)
-
-      top = targetY + bounds.minY
-      surface = top - STACK_GAP
-      prevTopAngle = highlightAngle
-
-      stoneSequenceRef.current += 1
-    }
-
-    stackTopYRef.current = top
-    stackSurfaceYRef.current = surface
-    lastTopAngleRef.current = prevTopAngle
-
-    useGameState.setState({ stonesPlaced: INITIAL_STACK_COUNT, phase: "stable" })
-    syncTowerOffset()
-  }, [computeBounds, consumeCandleWindow, syncTowerOffset])
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "l" || e.key === "L") {
-        const newDebugMode = !debugMode
-        setDebugMode(newDebugMode)
-        setTimeScale(newDebugMode ? 60 : 1)
-        console.log(`[v0] Debug mode ${newDebugMode ? "enabled" : "disabled"} - timeScale: ${newDebugMode ? 60 : 1}x`)
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [debugMode, setDebugMode, setTimeScale])
-
-  // Initialize physics engine and audio
-  useEffect(() => {
-    // Only run on client side
-    if (typeof window === 'undefined') return
-    try {
-      console.log("[v0] Starting game container initialization")
-      engineRef.current = new PhysicsEngine(CANVAS_WIDTH, CANVAS_HEIGHT, DEFAULT_CONFIG.gravity)
-
-      // Audio temporarily disabled for debugging
-      // const initAudio = async () => {
-      //   try {
-      //     await audioRef.current.initialize()
-      //     console.log("[v0] Audio initialized successfully")
-      //   } catch (error) {
-      //     console.error("[v0] Audio initialization failed:", error)
-      //   }
-      //   document.removeEventListener("click", initAudio)
-      //   document.removeEventListener("keydown", initAudio)
-      // }
-      // document.addEventListener("click", initAudio)
-      // document.addEventListener("keydown", initAudio)
-
-      const gameLoop = () => {
-        const now = Date.now()
-        const deltaTime = now - lastTimeRef.current
-        lastTimeRef.current = now
-
-        if (engineRef.current) {
-          const {
-            physicsActive: currentPhysicsActive,
-            phase: currentPhase,
-            stonesPlaced: currentStonesPlaced,
-            timeScale: currentTimeScale,
-            towerOffset: currentTowerOffset,
-          } = useGameState.getState()
-
-          const targetOffset = towerOffsetTargetRef.current
-          if (Math.abs(targetOffset - currentTowerOffset) > 0.1) {
-            const lerpFactor = Math.min(1, deltaTime / 200)
-            const newOffset = currentTowerOffset + (targetOffset - currentTowerOffset) * lerpFactor
-            useGameState.setState({ towerOffset: newOffset })
-          }
-
-          if (currentPhysicsActive) {
-            engineRef.current.update(deltaTime)
-          }
-
-          // Update render periodically
-          if (Math.random() < 0.1) {
-            setRenderTrigger((prev) => prev + 1)
-          }
-
-          // Test counter to verify React is working
-          setTestCounter((prev) => prev + 1)
-
-          marketAlignmentTimeRef.current += deltaTime / 1000
-          const newAlignment = Math.sin(marketAlignmentTimeRef.current * 0.1) * 0.5
-          setMarketAlignment(newAlignment)
-
-          const latestFeatures = lastFeaturesRef.current
-          if (currentPhase !== "loss" && currentStonesPlaced > 0 && latestFeatures) {
-            const pendingStance = placingStoneRef.current?.stance ?? hoverStoneRef.current?.stance ?? DEFAULT_STANCE
-            const loseCount = stonesToLose(latestFeatures, pendingStance, currentStonesPlaced)
-            if (loseCount > 0) {
-              const momentumMag = Math.abs(latestFeatures.momentum)
-              const orderMag = Math.abs(latestFeatures.orderImbalance)
-              const volatilityMag = Math.max(0, latestFeatures.volatility)
-              const featureSeverity = clamp(momentumMag * 0.6 + orderMag * 0.3 + volatilityMag * 0.1, 0, 1)
-              const stackSeverity = clamp(loseCount / Math.max(currentStonesPlaced, 1), 0, 1)
-              const severity = clamp(featureSeverity * 0.75 + stackSeverity * 0.25, 0, 1)
-              triggerLossEvent(pendingStance, loseCount, severity)
-            }
-          }
-
-          const activeHoverStone = hoverStoneRef.current
-
-          if (currentPhase === "hovering" && activeHoverStone) {
-            const candleInterval = CANDLE_INTERVAL_MS / Math.max(0.1, currentTimeScale)
-            if (
-              now - hoverModulationTimerRef.current >= candleInterval &&
-              activeHoverStone.updatesApplied < activeHoverStone.maxUpdates
-            ) {
-              hoverModulationTimerRef.current = now
-
-              const visual = consumeNextCandleVisual()
-              const landingSurface = stackSurfaceYRef.current
-              const desiredOffset = clampDirectionalOffset(visual.geometry.beta)
-              const stanceForAccount = activeHoverStone.stance
-              useAccountState.getState().registerCandle(visual.candle, stanceForAccount)
-
-              hoverTransitionRef.current = {
-                from: cloneHoverSnapshot(activeHoverStone),
-                target: {
-                  geometry: visual.geometry,
-                  strength: visual.strength,
-                  color: visual.color,
-                  facetStrength: visual.facetStrength,
-                  params: visual.params,
-                  candle: visual.candle,
-                  features: visual.features,
-                  directionalOffset: desiredOffset,
-                },
-                landingSurface,
-                elapsed: 0,
-                duration: HOVER_TRANSITION_DURATION_MS,
-              }
-
-              setHoverStone((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      params: visual.params,
-                      candle: visual.candle,
-                      features: visual.features,
-                      updatesApplied: Math.min(prev.updatesApplied + 1, prev.maxUpdates),
-                    }
-                  : prev,
-              )
-
-              setLatestFeatures(visual.features)
-            }
-          }
-
-          const transition = hoverTransitionRef.current
-          const hoverForTransition = hoverStoneRef.current
-
-          if (currentPhase === "hovering" && transition && hoverForTransition) {
-            transition.elapsed = Math.min(transition.elapsed + deltaTime, transition.duration)
-            const progress =
-              transition.duration <= 0 ? 1 : Math.max(0, Math.min(1, transition.elapsed / transition.duration))
-            const eased = easeInOut(progress)
-            const { from, target, landingSurface } = transition
-
-            const geometry: StoneGeometryInput = {
-              widthBottom: lerpScalar(from.geometry.widthBottom, target.geometry.widthBottom, eased),
-              height: lerpScalar(from.geometry.height, target.geometry.height, eased),
-              taper: lerpScalar(from.geometry.taper, target.geometry.taper, eased),
-              round: lerpScalar(from.geometry.round, target.geometry.round, eased),
-              beta: lerpAngle(from.geometry.beta, target.geometry.beta, eased),
-              tau: lerpAngle(from.geometry.tau, target.geometry.tau, eased),
-            }
-
-            const trapezoid = makeTrapezoidFromAngles({
-              widthBottom: geometry.widthBottom,
-              height: geometry.height,
-              taper: geometry.taper,
-              round: geometry.round,
-              betaGlobal: from.prevTopAngle + geometry.beta,
-              tauGlobal: from.prevTopAngle + geometry.tau,
-              prevTopAngleGlobal: from.prevTopAngle,
-              segments: 5,
-            })
-
-            const fromDirectional = normalizeAngle(from.baseOrientation - from.prevTopAngle)
-            const targetOffset = clampDirectionalOffset(target.directionalOffset)
-            const blendedOffset = lerpAngle(fromDirectional, targetOffset, eased)
-            const { baseOrientation: targetBaseOrientation } = resolveBaseOrientation(from.prevTopAngle, blendedOffset)
-            const angleLongTarget = targetBaseOrientation - trapezoid.metrics.bottomAngleLocal
-            const angleLong = lerpAngle(from.angleLong, angleLongTarget, eased)
-            const angleShortTarget = angleLongTarget + Math.PI
-            const angleShort = lerpAngle(from.angleShort, angleShortTarget, eased)
-            const stance = hoverForTransition.stance
-            const startAngle = stance === "short" ? from.angleShort : from.angleLong
-            const desiredAngle = stance === "short" ? angleShortTarget : angleLongTarget
-            const angle = lerpAngle(startAngle, desiredAngle, eased)
-
-            const localVerts = trapezoid.local
-            const vertices = orientVertices(localVerts, angle)
-            const metricsWorld = deriveWorldMetrics(trapezoid.metrics, angle)
-            const highlightAngle = clampTowerTilt(metricsWorld.topAngle)
-            const metricsWorldAdjusted = { ...metricsWorld, topAngle: highlightAngle }
-            const bounds = computeBounds(vertices)
-            const targetY = landingSurface - bounds.maxY
-            const hoverY = targetY - HOVER_VERTICAL_OFFSET
-            const y = lerpScalar(from.y, hoverY, eased)
-
-            const strength = lerpScalar(from.strength, target.strength, eased)
-            const color = lerpColor(from.color, target.color, eased)
-            const facetStrength = lerpScalar(from.facetStrength, target.facetStrength, eased)
-            const baseOrientation = clampTowerTilt(angleLong + trapezoid.metrics.bottomAngleLocal)
-
-            setHoverStone((prev) => {
-              if (!prev) return prev
-              return {
-                ...prev,
-                localVertices: localVerts,
-                vertices,
-                metricsLocal: trapezoid.metrics,
-                metricsWorld: metricsWorldAdjusted,
-                geometry,
-                strength,
-                baseOrientation,
-                color,
-                targetY,
-                y,
-                params: target.params,
-                candle: target.candle,
-                bounds,
-                features: target.features,
-                angle,
-                angleLong,
-                angleShort,
-                highlightAngle,
-                facetStrength,
-              }
-            })
-
-            if (progress >= 1) {
-              hoverTransitionRef.current = null
-            }
-          } else if (!hoverForTransition) {
-            hoverTransitionRef.current = null
-          } else if (transition && currentPhase !== "hovering") {
-            hoverTransitionRef.current = null
-          }
-
-          const activePlacingStone = placingStoneRef.current
-
-          if (currentPhase === "placing" && activePlacingStone) {
-            const elapsed = now - dropStartTimeRef.current
-            const duration = DEFAULT_CONFIG.placementDuration / currentTimeScale
-            const progress = Math.min(elapsed / duration, 1)
-            setPlacementProgress(progress)
-
-            // Easing function (ease-in-out)
-            const eased = easeInOut(progress)
-
-            // Update placing stone position
-            const currentY =
-              activePlacingStone.startY + (activePlacingStone.targetY - activePlacingStone.startY) * eased
-            setPlacingStone((prev) => (prev ? { ...prev, y: currentY } : prev))
-
-            // When placement complete, add to stable stack
-            if (progress >= 1) {
-              finalizePlacement()
-            }
-          }
-        }
-
-        animationFrameRef.current = requestAnimationFrame(gameLoop)
-      }
-
-      animationFrameRef.current = requestAnimationFrame(gameLoop)
-
-      prepopulateStack()
-      prepareHoverStone()
-
-      const audioManager = audioRef.current
-
-      return () => {
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current)
-        }
-        clearDropTimer()
-        audioManager?.dispose()
-        // document.removeEventListener("click", initAudio)
-        // document.removeEventListener("keydown", initAudio)
-      }
-    } catch (error) {
-      console.error("[v0] Game container initialization failed:", error)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   const beginPlacementFromHover = useCallback(() => {
     const hover = hoverStoneRef.current
-    if (!hover) {
-      console.warn("[v0] Attempted to drop without a hover stone prepared")
-      return
+    if (!hover || !engineRef.current) return
+
+    // If there's an active flip transition, complete it immediately before placing
+    if (hoverTransitionRef.current) {
+      const finalHover = hoverTransitionRef.current.target
+      hoverStoneRef.current = finalHover
+      setHoverStone(finalHover)
+      hoverTransitionRef.current = null
     }
 
-    setCanDecide(false)
-    setDecisionProgress(0)
-    decisionDeadlineRef.current = null
+    // Get the final hover state (after completing any transition)
+    const finalHover = hoverStoneRef.current
+    if (!finalHover) return
 
+    hoverStoneRef.current = null
     setHoverStone(null)
-    hoverTransitionRef.current = null
-
     stoneSequenceRef.current += 1
-    console.log(
-      `[v0] Dropping stone #${stoneSequenceRef.current} from hover at (${hover.x}, ${hover.y}) -> target ${hover.targetY}`,
-    )
 
     const placing: PlacingStone = {
-      ...hover,
-      startY: hover.y,
-      y: hover.y,
+      ...finalHover,
+      startY: finalHover.y,
+      settleTargetAngle: finalHover.angle,
     }
-
     setPlacingStone(placing)
-
-    dropStartTimeRef.current = Date.now()
-    setDropStartTime(dropStartTimeRef.current)
+    placingStoneRef.current = placing
     setPhase("placing")
+    setDropStartTime(Date.now())
     setPlacementProgress(0)
-
-    const cadence = DEFAULT_CONFIG.dropCadence / timeScale
-    const scheduledAt = nextDropAtRef.current ?? dropStartTimeRef.current
-    nextDropAtRef.current = scheduledAt + cadence
-
-    const { debugMode: currentDebugMode } = useGameState.getState()
-    if (currentDebugMode) {
-      const priceChange = ((hover.candle.close - hover.candle.open) / hover.candle.open) * 100
-      console.log(
-        `[v0] Spawn #${stoneSequenceRef.current} - simulated price ${priceChange > 0 ? "+" : ""}${priceChange.toFixed(1)}%`,
-      )
-    }
-  }, [setCanDecide, setDecisionProgress, setDropStartTime, setPhase, setPlacementProgress, setPlacingStone, setHoverStone, timeScale])
+    setCanDecide(false)
+    setDecisionProgress(0)
+  }, [setCanDecide, setDecisionProgress, setDropStartTime, setHoverStone, setPhase, setPlacementProgress, setPlacingStone])
 
   const armNextDrop = useCallback(() => {
-    if (phase !== "hovering") return
+    if (phase !== "hovering") {
+      clearDropTimer()
+      return
+    }
     if (!hoverStoneRef.current) return
-    if (dropTimerRef.current) return
-
-    const cadence = DEFAULT_CONFIG.dropCadence / timeScale
+    clearDropTimer()
+    const cadence = DEFAULT_CONFIG.dropCadence / Math.max(0.1, timeScale)
     const now = Date.now()
 
+    // Initialize or advance the next drop time
     if (nextDropAtRef.current === null) {
+      // First stone: schedule for cadence from now
       nextDropAtRef.current = now + cadence
-    } else if (nextDropAtRef.current < now) {
-      while (nextDropAtRef.current < now) {
-        nextDropAtRef.current += cadence
-      }
+    } else if (nextDropAtRef.current <= now) {
+      // We're past the scheduled time (e.g., after a long placement)
+      // Schedule the next drop from now, not from the missed time
+      nextDropAtRef.current = now + cadence
     }
 
-    const triggerAt = nextDropAtRef.current ?? now
-    const delay = Math.max(0, triggerAt - now)
-
-    console.log(`[v0] Arming next drop in ${delay}ms (scheduled at ${new Date(triggerAt).toISOString()})`)
-
+    const delay = Math.max(0, nextDropAtRef.current - now)
     dropTimerRef.current = setTimeout(() => {
       dropTimerRef.current = null
+      // Advance to next scheduled time
+      const dropTime = nextDropAtRef.current ?? Date.now()
+      nextDropAtRef.current = dropTime + cadence
+      setCanDecide(false)
       beginPlacementFromHover()
     }, delay)
-  }, [phase, timeScale, beginPlacementFromHover])
+  }, [phase, timeScale, clearDropTimer, setCanDecide, beginPlacementFromHover])
+
+  const updateForceIndicators = useCallback(
+    (alignment: number) => {
+      const stabilizer = alignment > 0 ? clamp(alignment, 0, 1) : 0
+      const disturber = alignment < 0 ? clamp(-alignment, 0, 1) : 0
+      setForceStrengths(stabilizer, disturber, Math.sign(alignment))
+    },
+    [setForceStrengths],
+  )
 
   const prepareHoverStone = useCallback(() => {
-    const landingSurface = stackSurfaceYRef.current
-    hoverTransitionRef.current = null
+    const engine = engineRef.current
+    if (!engine) return
 
-    const visual = consumeNextCandleVisual()
-    const prevTopAngle = lastTopAngleRef.current
-    const accountStore = useAccountState.getState()
-    if (accountStore.lastPrice === null) {
-      accountStore.seedPrice(visual.candle.open)
-    }
-    const stanceForAccount = useGameState.getState().hoverStance
-    accountStore.registerCandle(visual.candle, stanceForAccount)
+    const { candle, evaluation, visual } = consumeNextCandleVisual()
+    setLatestFeatures(evaluation.features)
+    // Don't register P&L yet - user can still change stance during hover
+    // P&L will be registered when stone is finalized
+
+    const support = stackOrientationRef.current
+    const prevTopAngle = support.angle
 
     const trapezoid = makeTrapezoidFromAngles({
       widthBottom: visual.geometry.widthBottom,
@@ -837,85 +563,438 @@ export function GameContainer() {
     })
 
     const localVertices = trapezoid.local
-    const { baseOrientation } = resolveBaseOrientation(prevTopAngle, visual.geometry.beta)
-    const angleLong = baseOrientation - trapezoid.metrics.bottomAngleLocal
-    const angleShort = angleLong + Math.PI
-    const angle = angleLong
-    const vertices = orientVertices(localVertices, angle)
-    const metricsWorldRaw = deriveWorldMetrics(trapezoid.metrics, angle)
-    const highlightAngle = clampTowerTilt(metricsWorldRaw.topAngle)
-    const metricsWorld = { ...metricsWorldRaw, topAngle: highlightAngle }
+    const { baseOrientation: longBase } = resolveBaseOrientation(prevTopAngle, visual.geometry.beta - support.angle * 0.6)
+    const longAngle = normalizeAngle(longBase - trapezoid.metrics.bottomAngleLocal)
+    const shortAngle = normalizeAngle(longAngle + Math.PI)
+    const { baseOrientation: flatBase } = resolveBaseOrientation(prevTopAngle, 0)
+    const flatAngle = normalizeAngle(flatBase - trapezoid.metrics.bottomAngleLocal)
+
+    const stance = hoverStance ?? DEFAULT_STANCE
+    const initialAngle = stance === "short" ? shortAngle : stance === "flat" ? flatAngle : longAngle
+    const vertices = orientVertices(localVertices, initialAngle)
+    const metricsWorld = deriveWorldMetrics(trapezoid.metrics, initialAngle)
+    const highlightAngle = normalizeAngle(metricsWorld.topAngle)
     const bounds = computeBounds(vertices)
+    const placement = solvePlacement(trapezoid.anchored, initialAngle, support)
+    // Hover stone spawns at a fixed screen position above the desired tower top
+    // DESIRED_TOP_SCREEN_Y is where we want the tower top, hover appears above it
+    const hoverScreenY = DESIRED_TOP_SCREEN_Y - HOVER_VERTICAL_OFFSET
+    // Convert screen Y to world Y by removing the current tower offset
+    const currentTowerOffset = towerOffsetTargetRef.current
+    const hoverWorldY = hoverScreenY - currentTowerOffset
 
-    const targetY = landingSurface - bounds.maxY
-    const hoverY = targetY - HOVER_VERTICAL_OFFSET
-    const spawnedAt = Date.now()
-
-    const hover: HoverStone = {
+    const hoverStone: HoverStone = {
       localVertices,
       vertices,
       metricsLocal: trapezoid.metrics,
+      anchored: trapezoid.anchored,
       metricsWorld,
       geometry: visual.geometry,
       strength: visual.strength,
-      baseOrientation,
+      baseOrientation: initialAngle,
       updatesApplied: 1,
       maxUpdates: STONE_CANDLE_WINDOW,
-      x: CANVAS_WIDTH / 2,
-      y: hoverY,
+      x: placement.position.x,
+      y: hoverWorldY,
       color: visual.color,
-      targetY,
+      targetY: placement.position.y,
       params: visual.params,
-      candle: visual.candle,
+      candle,
       bounds,
-      spawnedAt,
-      stance: DEFAULT_STANCE,
-      features: visual.features,
-      angle,
-      angleLong,
-      angleShort,
-      prevTopAngle,
+      spawnedAt: Date.now(),
+      stance,
+      features: evaluation.features,
+      angle: initialAngle,
+      angleLong: longAngle,
+      angleShort: shortAngle,
+      angleFlat: flatAngle,
       highlightAngle,
       facetStrength: visual.facetStrength,
+      prevTopAngle,
     }
 
-    const cadence = DEFAULT_CONFIG.dropCadence / timeScale
-    const decisionDuration = cadence * DEFAULT_CONFIG.decisionWindow
-
-    decisionDurationRef.current = decisionDuration
-    decisionDeadlineRef.current = spawnedAt + decisionDuration
-    hoverModulationTimerRef.current = spawnedAt
-
-    setLatestFeatures(visual.features)
-    setHoverStone(hover)
+    hoverTransitionRef.current = null
+    hoverStoneRef.current = hoverStone
+    setHoverStone(hoverStone)
     setPhase("hovering")
-    setDropStartTime(null)
-    setPlacementProgress(0)
     setCanDecide(true)
-    setHoverStance(DEFAULT_STANCE)
     setDecisionProgress(1)
-
-    console.log(
-      `[v0] Prepared hover stone #${stoneSequenceRef.current + 1} at (${hover.x}, ${hover.y}) targeting ${targetY}`,
-    )
-
+    setDropStartTime(null)
+    decisionDurationRef.current = DEFAULT_CONFIG.dropCadence * DEFAULT_CONFIG.decisionWindow
+    decisionDeadlineRef.current = hoverStone.spawnedAt + decisionDurationRef.current
+    hoverModulationTimerRef.current = hoverStone.spawnedAt
+    applyAlignmentSample(evaluation.features, stance)
+    updateForceIndicators(alignmentSampleRef.current.score)
     syncTowerOffset()
     armNextDrop()
   }, [
-    computeBounds,
+    accountState,
+    alignmentSampleRef,
+    applyAlignmentSample,
+    armNextDrop,
     consumeNextCandleVisual,
+    hoverStance,
     setCanDecide,
     setDecisionProgress,
-    setLatestFeatures,
     setDropStartTime,
-    setHoverStance,
     setHoverStone,
+    setLatestFeatures,
+    setPhase,
+    syncTowerOffset,
+    updateForceIndicators,
+  ])
+
+  const finalizePlacement = useCallback(() => {
+    const placing = placingStoneRef.current
+    const engine = engineRef.current
+    if (!placing || !engine) return
+
+    const supportFrame = supportFrameRef.current
+    const addedStone = engine.addStone({
+      vertices: placing.vertices,
+      params: placing.params,
+      x: placing.x,
+      y: placing.targetY,
+      color: placing.color,
+      topAngle: placing.highlightAngle,
+      anchor: placing.anchored,
+      supportTargetX: supportFrame.supportPoint.x,
+    })
+    // Register P&L with the FINAL stance (after user's decision)
+    if (placing.candle) {
+      accountState.registerCandle(placing.candle, placing.stance)
+    }
+
+    // Precisely seat the stone on the support frame
+    // Pass stance to determine if stone is flipped (short = flipped)
+    const isFlipped = placing.stance === "short"
+    engine.setStoneStatic(addedStone, true)
+    seatStoneOnSupport(addedStone, supportFrame, isFlipped)
+    Matter.Sleeping.set(addedStone.body, true)
+
+    updateStackReferences(addedStone)
+    stackSurfaceYRef.current = supportFrame.supportPoint.y
+
+    setPlacingStone(null)
+    placingStoneRef.current = null
+    incrementStonesPlaced()
+    setPhase("stable")
+    setPlacementProgress(1)
+    prepareHoverStone()
+  }, [
+    incrementStonesPlaced,
+    prepareHoverStone,
     setPhase,
     setPlacementProgress,
-    syncTowerOffset,
-    armNextDrop,
-    timeScale,
+    setPlacingStone,
+    updateStackReferences,
   ])
+
+  const triggerLossEvent = useCallback(
+    (stance: Stance, loseCount: number, severity: number) => {
+      const engine = engineRef.current
+      if (!engine || loseCount <= 0) return
+
+      setPhase("loss")
+      setPhysicsActive(true)
+      setCanDecide(false)
+      setDecisionProgress(0)
+      setPlacementProgress(0)
+      hoverTransitionRef.current = null
+      setHoverStone(null)
+      setPlacingStone(null)
+      hoverStoneRef.current = null
+      placingStoneRef.current = null
+      nextDropAtRef.current = null
+      clearDropTimer()
+
+      const stones = engine.getStones()
+      if (stones.length === 0) {
+        setPhase("stable")
+        setPhysicsActive(false)
+        prepareHoverStone()
+        return
+      }
+
+      const sorted = [...stones].sort((a, b) => computeBodyTop(a) - computeBodyTop(b))
+      const drops = sorted.slice(0, Math.min(loseCount, sorted.length))
+      const survivors = sorted.slice(drops.length)
+
+      for (const survivor of survivors) {
+        engine.setStoneStatic(survivor, true)
+        Matter.Sleeping.set(survivor.body, true)
+      }
+
+      for (const stone of drops) {
+        engine.setStoneStatic(stone, false)
+        Matter.Sleeping.set(stone.body, false)
+        Matter.Body.applyForce(stone.body, stone.body.position, { x: (Math.random() - 0.5) * 0.0005, y: -0.001 * severity })
+      }
+
+      setTimeout(() => {
+        for (const stone of drops) {
+          engine.removeStone(stone)
+        }
+        recalcStackFromPhysics()
+        setPhase("stable")
+        setPhysicsActive(false)
+        prepareHoverStone()
+      }, 1200)
+    },
+    [clearDropTimer, prepareHoverStone, recalcStackFromPhysics, setCanDecide, setDecisionProgress, setHoverStone, setPhase, setPlacingStone, setPhysicsActive, setPlacementProgress],
+  )
+
+  const dropTimerCleanup = useCallback(() => {
+    if (dropTimerRef.current) {
+      clearTimeout(dropTimerRef.current)
+      dropTimerRef.current = null
+    }
+  }, [])
+
+  const handleFlip = useCallback(() => {
+    const hover = hoverStoneRef.current
+    if (!hover || !canDecide || hoverTransitionRef.current) return // Don't flip during transition
+
+    const nextStance: Stance = hover.stance === "short" ? "long" : "short"
+    const nextAngle = nextStance === "short" ? hover.angleShort : hover.angleLong
+    const rotated = orientVertices(hover.localVertices, nextAngle)
+    const metricsWorld = deriveWorldMetrics(hover.metricsLocal, nextAngle)
+    const highlightAngle = normalizeAngle(metricsWorld.topAngle)
+    const placement = solvePlacement(hover.anchored, nextAngle, stackOrientationRef.current)
+    // Keep hover at fixed screen position
+    const hoverScreenY = DESIRED_TOP_SCREEN_Y - HOVER_VERTICAL_OFFSET
+    const currentTowerOffset = towerOffsetTargetRef.current
+    const hoverWorldY = hoverScreenY - currentTowerOffset
+    const bounds = computeBounds(rotated)
+
+    const targetHover: HoverStone = {
+      ...hover,
+      stance: nextStance,
+      angle: nextAngle,
+      vertices: rotated,
+      metricsWorld,
+      highlightAngle,
+      bounds,
+      targetY: placement.position.y,
+      x: placement.position.x,
+      y: hoverWorldY,
+    }
+
+    // Animate the flip with a smooth transition
+    hoverTransitionRef.current = {
+      start: hover,
+      target: targetHover,
+      elapsed: 0,
+      duration: 300, // 300ms flip animation
+    }
+
+    setHoverStance(nextStance)
+    if (lastFeaturesRef.current) {
+      applyAlignmentSample(lastFeaturesRef.current, nextStance)
+      updateForceIndicators(alignmentSampleRef.current.score)
+    }
+
+    // Update unrealized P&L with new stance
+    if (hover.candle && Number.isFinite(hover.candle.close)) {
+      accountState.updateUnrealizedPnl(hover.candle.close, nextStance)
+    }
+  }, [applyAlignmentSample, canDecide, setHoverStance, updateForceIndicators])
+
+  const handleDiscard = useCallback(() => {
+    const hover = hoverStoneRef.current
+    if (!hover || !canDecide) return
+    const neutralAngle = hover.angleFlat
+    const rotated = orientVertices(hover.localVertices, neutralAngle)
+    const metricsWorld = deriveWorldMetrics(hover.metricsLocal, neutralAngle)
+    const highlightAngle = normalizeAngle(metricsWorld.topAngle)
+    const placement = solvePlacement(hover.anchored, neutralAngle, stackOrientationRef.current)
+    // Keep hover at fixed screen position
+    const hoverScreenY = DESIRED_TOP_SCREEN_Y - HOVER_VERTICAL_OFFSET
+    const currentTowerOffset = towerOffsetTargetRef.current
+    const hoverWorldY = hoverScreenY - currentTowerOffset
+    const bounds = computeBounds(rotated)
+    const updated: HoverStone = {
+      ...hover,
+      stance: "flat",
+      angle: neutralAngle,
+      vertices: rotated,
+      metricsWorld,
+      highlightAngle,
+      bounds,
+      targetY: placement.position.y,
+      x: placement.position.x,
+      y: hoverWorldY,
+    }
+    hoverStoneRef.current = updated
+    setHoverStone(updated)
+    setHoverStance("flat")
+    if (lastFeaturesRef.current) {
+      applyAlignmentSample(lastFeaturesRef.current, "flat")
+      updateForceIndicators(alignmentSampleRef.current.score)
+    }
+
+    // Flat stance has no P&L (neutral position)
+    accountState.updateUnrealizedPnl(hover.candle?.close ?? 0, "flat")
+  }, [applyAlignmentSample, canDecide, setHoverStance, setHoverStone, updateForceIndicators])
+
+  useGestureControls(containerRef, {
+    onFlip: handleFlip,
+    onDiscard: handleDiscard,
+  })
+
+  useEffect(() => {
+    prepareHoverStoneRef.current = prepareHoverStone
+  }, [prepareHoverStone])
+
+  useEffect(() => {
+    finalizePlacementRef.current = finalizePlacement
+  }, [finalizePlacement])
+
+  useEffect(() => {
+    beginPlacementFromHoverRef.current = beginPlacementFromHover
+  }, [beginPlacementFromHover])
+
+  useEffect(() => {
+    const engine = engineRef.current
+    if (!engine) return
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
+      dropTimerCleanup()
+    }
+  }, [dropTimerCleanup])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (initializedRef.current) return
+    initializedRef.current = true
+
+    const engine = new PhysicsEngine(CANVAS_WIDTH, CANVAS_HEIGHT, DEFAULT_CONFIG.gravity)
+    engineRef.current = engine
+    resetForceIndicators()
+
+    const prepopulateStack = () => {
+      accountState.reset()
+      let support = DEFAULT_STACK_ORIENTATION
+      for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
+        const { visual } = consumeNextCandleVisual()
+        const trapezoid = makeTrapezoidFromAngles({
+          widthBottom: visual.geometry.widthBottom,
+          height: visual.geometry.height,
+          taper: visual.geometry.taper,
+          round: visual.geometry.round,
+          betaGlobal: support.angle,
+          tauGlobal: support.angle,
+          prevTopAngleGlobal: support.angle,
+          segments: 5,
+        })
+        const localVertices = trapezoid.local
+        const { baseOrientation } = resolveBaseOrientation(support.angle, 0)
+        const bodyAngle = normalizeAngle(baseOrientation - trapezoid.metrics.bottomAngleLocal)
+        const vertices = orientVertices(localVertices, bodyAngle)
+        const metricsWorld = deriveWorldMetrics(trapezoid.metrics, bodyAngle)
+        const highlightAngle = normalizeAngle(metricsWorld.topAngle)
+        const placement = solvePlacement(trapezoid.anchored, bodyAngle, support)
+        const stone = engine.addStone({
+          vertices,
+          params: visual.params,
+          x: placement.position.x,
+          y: placement.position.y,
+          color: visual.color,
+          topAngle: highlightAngle,
+          anchor: trapezoid.anchored,
+          supportTargetX: support.supportPoint.x,
+        })
+        engine.setStoneStatic(stone, true)
+        seatStoneOnSupport(stone, support, false) // Initial stack uses flat/normal orientation
+        Matter.Sleeping.set(stone.body, true)
+        support = deriveSupportFrame(stone)
+      }
+      recalcStackFromPhysics()
+      useGameState.setState({ stonesPlaced: INITIAL_STACK_COUNT })
+      setPhase("stable")
+      syncTowerOffset()
+      setRenderTrigger((v) => v + 1)
+    }
+
+    prepopulateStack()
+    prepareHoverStoneRef.current()
+
+    const step = () => {
+      const now = Date.now()
+      lastFrameTimeRef.current = now
+      const state = useGameState.getState()
+      const currentPhase = state.phase
+      const currentTimeScale = state.timeScale
+      const currentCanDecide = state.canDecide
+      const dropStartTime = state.dropStartTime ?? now
+
+      if (placingStoneRef.current && currentPhase === "placing") {
+        const placing = placingStoneRef.current
+        const duration = PLACEMENT_DURATION_MS / Math.max(0.1, currentTimeScale)
+        const progress = clamp((now - dropStartTime) / duration, 0, 1)
+        const eased = easeInOut(progress)
+        const currentY = placing.startY + (placing.targetY - placing.startY) * eased
+        const currentAngle = normalizeAngle(
+          placing.angle + (placing.settleTargetAngle - placing.angle) * easeInOut(progress),
+        )
+        const rotated = orientVertices(placing.localVertices, currentAngle)
+        const metricsWorld = deriveWorldMetrics(placing.metricsLocal, currentAngle)
+        const highlightAngle = normalizeAngle(metricsWorld.topAngle)
+        setPlacingStone((prev) =>
+          prev
+            ? {
+                ...prev,
+                y: currentY,
+                angle: currentAngle,
+                vertices: rotated,
+                metricsWorld,
+                highlightAngle,
+              }
+            : prev,
+        )
+        setPlacementProgress(progress)
+        if (progress >= 1) {
+          finalizePlacementRef.current()
+        }
+      }
+
+      if (decisionDeadlineRef.current && currentPhase === "hovering") {
+        const remaining = clamp((decisionDeadlineRef.current - now) / Math.max(decisionDurationRef.current, 1), 0, 1)
+        setDecisionProgress(remaining)
+        if (remaining <= 0 && currentCanDecide && hoverStoneRef.current) {
+          setCanDecide(false)
+          beginPlacementFromHoverRef.current()
+        }
+      }
+
+      // Smooth tower offset animation
+      const currentOffset = state.towerOffset
+      const targetOffset = towerOffsetTargetRef.current
+      if (Math.abs(targetOffset - currentOffset) > 0.5) {
+        const easingSpeed = 0.08
+        const newOffset = currentOffset + (targetOffset - currentOffset) * easingSpeed
+        setTowerOffset(newOffset)
+      } else if (targetOffset !== currentOffset) {
+        setTowerOffset(targetOffset)
+      }
+
+      if (Math.random() < 0.1) {
+        setRenderTrigger((v) => v + 1)
+      }
+
+      animationFrameRef.current = requestAnimationFrame(step)
+    }
+
+    animationFrameRef.current = requestAnimationFrame(step)
+
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
+      dropTimerCleanup()
+      initializedRef.current = false
+      engine.clear()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (phase === "hovering") {
@@ -927,117 +1006,185 @@ export function GameContainer() {
 
   useEffect(() => {
     if (phase !== "hovering") return
-    if (!hoverStoneRef.current) return
-    const cadence = DEFAULT_CONFIG.dropCadence / timeScale
-    nextDropAtRef.current = Date.now() + cadence
-    clearDropTimer()
-    armNextDrop()
-  }, [timeScale, phase, armNextDrop, clearDropTimer])
+    // Update hover stone every 1 second to represent streaming data within the 30s candle
+    const MODULATION_INTERVAL = 1000
 
-  useGestureControls(containerRef, { onFlip: handleFlip, onDiscard: handleDiscard })
+    const modulateHover = () => {
+      const hover = hoverStoneRef.current
+      if (!hover) return
 
-  const finalizePlacement = () => {
-    const stoneToFinalize = placingStoneRef.current
-    if (!stoneToFinalize || !engineRef.current) {
-      console.log("[v0] Cannot finalize placement - missing stone or engine")
-      return
-    }
+      const now = Date.now()
+      const elapsed = now - hoverModulationTimerRef.current
 
-    if (stoneToFinalize.stance === "flat") {
-      console.log("[v0] Finalizing discard - stone will not enter stack")
-      setPlacingStone(null)
-      setPhase("stable")
-      setDecisionProgress(0)
-      prepareHoverStone()
-      return
-    }
+      if (elapsed >= MODULATION_INTERVAL && hover.updatesApplied < hover.maxUpdates) {
+        const { candle, evaluation, visual } = consumeNextCandleVisual()
+        setLatestFeatures(evaluation.features)
 
-    // Add stone to physics engine but keep physics disabled
-    const finalY = stoneToFinalize.targetY
+        // Update alignment with new features and current stance
+        lastFeaturesRef.current = evaluation.features
+        applyAlignmentSample(evaluation.features, hover.stance)
+        updateForceIndicators(alignmentSampleRef.current.score)
 
-    const finalizedHighlightAngle = clampTowerTilt(stoneToFinalize.highlightAngle)
-    engineRef.current.addStone(
-      stoneToFinalize.vertices,
-      stoneToFinalize.params,
-      stoneToFinalize.x,
-      finalY,
-      stoneToFinalize.color,
-      finalizedHighlightAngle,
-    )
+        // Update unrealized P&L with the latest price and current stance
+        if (candle && Number.isFinite(candle.close)) {
+          accountState.updateUnrealizedPnl(candle.close, hover.stance)
+        }
 
-    stackTopYRef.current = finalY + stoneToFinalize.bounds.minY
-    stackSurfaceYRef.current = stackTopYRef.current - STACK_GAP
-    lastTopAngleRef.current = finalizedHighlightAngle
+        if (!hoverTransitionRef.current) {
+          const support = stackOrientationRef.current
+          const prevTopAngle = support.angle
 
-    setPlacingStone(null)
-    setPhase("stable")
+          const trapezoid = makeTrapezoidFromAngles({
+            widthBottom: visual.geometry.widthBottom,
+            height: visual.geometry.height,
+            taper: visual.geometry.taper,
+            round: visual.geometry.round,
+            betaGlobal: prevTopAngle + visual.geometry.beta,
+            tauGlobal: prevTopAngle + visual.geometry.tau,
+            prevTopAngleGlobal: prevTopAngle,
+            segments: 5,
+          })
 
-    const { stonesPlaced: currentStonesPlaced } = useGameState.getState()
-    incrementStonesPlaced()
+          const { baseOrientation: longBase } = resolveBaseOrientation(
+            prevTopAngle,
+            visual.geometry.beta - support.angle * 0.6,
+          )
+          const longAngle = normalizeAngle(longBase - trapezoid.metrics.bottomAngleLocal)
+          const shortAngle = normalizeAngle(longAngle + Math.PI)
+          const { baseOrientation: flatBase } = resolveBaseOrientation(prevTopAngle, 0)
+          const flatAngle = normalizeAngle(flatBase - trapezoid.metrics.bottomAngleLocal)
 
-    syncTowerOffset()
+          const targetStance = hover.stance
+          const targetAngle =
+            targetStance === "short" ? shortAngle : targetStance === "flat" ? flatAngle : longAngle
 
-    console.log(`[v0] Stone finalized - tower height: ${currentStonesPlaced + 1}`)
+          const targetVertices = orientVertices(trapezoid.local, targetAngle)
+          const targetMetricsWorld = deriveWorldMetrics(trapezoid.metrics, targetAngle)
+          const targetHighlightAngle = normalizeAngle(targetMetricsWorld.topAngle)
+          const targetBounds = computeBounds(targetVertices)
+          const targetPlacement = solvePlacement(trapezoid.anchored, targetAngle, support)
+          // Keep hover at fixed screen position
+          const targetHoverScreenY = DESIRED_TOP_SCREEN_Y - HOVER_VERTICAL_OFFSET
+          const targetCurrentTowerOffset = towerOffsetTargetRef.current
+          const targetHoverWorldY = targetHoverScreenY - targetCurrentTowerOffset
 
-    prepareHoverStone()
-  }
+          const targetHover: HoverStone = {
+            ...hover,
+            localVertices: trapezoid.local,
+            vertices: targetVertices,
+            metricsLocal: trapezoid.metrics,
+            anchored: trapezoid.anchored,
+            metricsWorld: targetMetricsWorld,
+            geometry: visual.geometry,
+            strength: visual.strength,
+            angle: targetAngle,
+            angleLong: longAngle,
+            angleShort: shortAngle,
+            angleFlat: flatAngle,
+            highlightAngle: targetHighlightAngle,
+            facetStrength: visual.facetStrength,
+            x: targetPlacement.position.x,
+            y: targetHoverWorldY,
+            targetY: targetPlacement.position.y,
+            color: visual.color,
+            params: visual.params,
+            candle,
+            bounds: targetBounds,
+            features: evaluation.features,
+            updatesApplied: hover.updatesApplied + 1,
+          }
 
-  const triggerLossEvent = (stance: Stance, loseCount: number, severity: number) => {
-    if (!engineRef.current) return
+          hoverTransitionRef.current = {
+            start: hover,
+            target: targetHover,
+            elapsed: 0,
+            duration: 180,
+          }
+        }
 
-    if (loseCount <= 0) {
-      console.log("[v0] Loss check: no stones to remove")
-      return
-    }
-
-    hoverTransitionRef.current = null
-    setHoverStone(null)
-    setPlacingStone(null)
-
-    setPhase("loss")
-    setPhysicsActive(true)
-    setCanDecide(false)
-    setDecisionProgress(0)
-    decisionDeadlineRef.current = null
-
-    const allStones = engineRef.current.getStones()
-    const stonesToRemove = Math.min(loseCount, allStones.length)
-
-    const penalty = useAccountState.getState().applyLossPenalty(stonesToRemove, severity)
-    console.log(
-      `[v0] Loss event - removing ${stonesToRemove} stones due to misalignment (severity: ${severity.toFixed(2)}, penalty: ${penalty.toFixed(2)})`,
-    )
-
-    for (let i = 0; i < stonesToRemove && i < allStones.length; i++) {
-      const stone = allStones[i]
-      stone.body.force = { x: (Math.random() - 0.5) * 0.1, y: -0.2 }
-    }
-
-    audioRef.current.playTumble()
-
-    setTimeout(() => {
-      setPhysicsActive(false)
-      setPhase("stable")
-      console.log("[v0] Loss event complete - returning to stable mode")
-      recalcStackFromPhysics()
-      if (!hoverStoneRef.current && !placingStoneRef.current) {
-        prepareHoverStone()
+        hoverModulationTimerRef.current = now
       }
-    }, 3000)
-  }
 
-  const decisionProgress = (() => {
-    if (!hoverStone) return 0
-    const deadline = decisionDeadlineRef.current
-    const duration = decisionDurationRef.current
-    if (!deadline || duration <= 0) return 0
-    return clamp((deadline - Date.now()) / duration, 0, 1)
-  })()
+      if (hoverTransitionRef.current) {
+        const transition = hoverTransitionRef.current
+        transition.elapsed += 16
+        const t = clamp(transition.elapsed / transition.duration, 0, 1)
+        const eased = easeInOut(t)
+        const next = transition.target
+        const from = transition.start
+
+        const interpLocalVertices = from.localVertices.map((fv, idx) => {
+          const tv = next.localVertices[idx] ?? fv
+          return {
+            x: fv.x + (tv.x - fv.x) * eased,
+            y: fv.y + (tv.y - fv.y) * eased,
+          }
+        })
+
+        const currentAngle = from.angle + normalizeAngle(next.angle - from.angle) * eased
+        const interpVertices = orientVertices(interpLocalVertices, currentAngle)
+        const interpMetricsWorld = deriveWorldMetrics(
+          {
+            ...from.metricsLocal,
+            bottomAngleLocal:
+              from.metricsLocal.bottomAngleLocal +
+              normalizeAngle(next.metricsLocal.bottomAngleLocal - from.metricsLocal.bottomAngleLocal) * eased,
+            topAngleLocal:
+              from.metricsLocal.topAngleLocal +
+              normalizeAngle(next.metricsLocal.topAngleLocal - from.metricsLocal.topAngleLocal) * eased,
+          },
+          currentAngle,
+        )
+
+        const geometry: StoneGeometryInput = {
+          widthBottom: from.geometry.widthBottom + (next.geometry.widthBottom - from.geometry.widthBottom) * eased,
+          height: from.geometry.height + (next.geometry.height - from.geometry.height) * eased,
+          taper: from.geometry.taper + (next.geometry.taper - from.geometry.taper) * eased,
+          round: from.geometry.round + (next.geometry.round - from.geometry.round) * eased,
+          beta: from.geometry.beta + (next.geometry.beta - next.geometry.beta) * eased,
+          tau: from.geometry.tau + (next.geometry.tau - next.geometry.tau) * eased,
+        }
+
+        setHoverStone((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            localVertices: interpLocalVertices,
+            vertices: interpVertices,
+            metricsWorld: interpMetricsWorld,
+            geometry,
+            color: next.color,
+            strength: from.strength + (next.strength - from.strength) * eased,
+            facetStrength: from.facetStrength + (next.facetStrength - from.facetStrength) * eased,
+            angle: currentAngle,
+            x: from.x + (next.x - from.x) * eased,
+            y: from.y + (next.y - from.y) * eased,
+            bounds: computeBounds(interpVertices),
+          }
+        })
+
+        if (t >= 1) {
+          hoverStoneRef.current = next
+          setHoverStone(next)
+          hoverTransitionRef.current = null
+        }
+      }
+    }
+
+    const interval = setInterval(modulateHover, 16)
+    return () => clearInterval(interval)
+  }, [phase, consumeNextCandleVisual, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators])
 
   useEffect(() => {
-    setDecisionProgress(decisionProgress)
-  }, [decisionProgress, setDecisionProgress])
-
+    const engine = engineRef.current
+    if (!engine) return
+    if (alignmentScore < -0.8 && stonesPlaced > 0 && lastFeaturesRef.current) {
+      const loseCount = stonesToLose(lastFeaturesRef.current, hoverStance ?? DEFAULT_STANCE, stonesPlaced)
+      if (loseCount > 0) {
+        triggerLossEvent(hoverStance ?? DEFAULT_STANCE, loseCount, clamp(-alignmentScore, 0, 1))
+      }
+    }
+  }, [alignmentScore, hoverStance, stonesPlaced, triggerLossEvent])
 
   return (
     <div ref={containerRef} className="relative touch-none">
@@ -1046,21 +1193,15 @@ export function GameContainer() {
         height={CANVAS_HEIGHT}
         engineRef={engineRef}
         renderTrigger={renderTrigger}
-        hoverStone={hoverStone}
+        hoverStone={hoverStoneState}
         hoverCanDecide={canDecide}
         decisionProgress={decisionProgress}
-        placingStone={placingStone}
+        placingStone={placingStoneState}
+        energyPhase={energyPhase}
+        energyRatio={energyBudget}
+        stabilizerStrength={stabilizerStrength}
+        disturberStrength={disturberStrength}
       />
-      {debugMode && (
-        <div className="absolute top-4 right-4 bg-black/80 text-white px-3 py-2 rounded text-sm font-mono">
-          <div>Debug Mode: ON</div>
-          <div>TimeScale: {timeScale}x</div>
-          <div>Stones: {stonesPlaced}</div>
-          <div>Alignment: {marketAlignment.toFixed(2)}</div>
-          <div>Phase: {phase}</div>
-          <div>Test Counter: {testCounter}</div>
-        </div>
-      )}
     </div>
   )
 }

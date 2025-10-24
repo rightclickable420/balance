@@ -20,6 +20,13 @@ export const rotatePoints = (points: Point[], theta: number): Point[] => points.
 
 const clampSegments = (segments: number): number => Math.max(1, Math.floor(segments))
 
+export const normalizeAngle = (angle: number): number => {
+  let result = angle % (Math.PI * 2)
+  if (result <= -Math.PI) result += Math.PI * 2
+  if (result > Math.PI) result -= Math.PI * 2
+  return result
+}
+
 const addFilletsCCW = (poly4: Point[], radius: number, segments = 3): Point[] => {
   if (radius <= 0) {
     return [...poly4]
@@ -167,10 +174,28 @@ export interface TrapezoidMetrics {
 
 export interface TrapezoidResult {
   local: Point[]
+  anchored: AnchoredTrapezoid
   world: Point[]
   cornersLocal: [Point, Point, Point, Point]
   cornersWorld: [Point, Point, Point, Point]
   metrics: TrapezoidMetrics
+}
+
+export interface AnchoredTrapezoid {
+  local: Point[]
+  metrics: {
+    bottomMid: Point
+    topMid: Point
+    bottomAngle: number
+    topAngle: number
+    height: number
+    bottomWidth: number
+    topWidth: number
+  }
+  transform: {
+    translation: Point
+    rotation: number
+  }
 }
 
 interface LocalTrapezoid {
@@ -257,8 +282,47 @@ export function makeTrapezoid(params: TrapezoidParams): TrapezoidResult {
   const bottomMidWorld = rotatePoint(bottomMidLocal, params.prevTopAngleGlobal)
   const topMidWorld = rotatePoint(topMidLocal, params.prevTopAngleGlobal)
 
+  const bottomTranslation = bottomMidLocal
+  const bottomRotation = bottomAngleLocal
+  const anchoredLocal = local.map((p) => {
+    const shifted = { x: p.x - bottomTranslation.x, y: p.y - bottomTranslation.y }
+    return rotatePoint(shifted, -bottomRotation)
+  })
+  const topMidAnchored = rotatePoint(
+    { x: topMidLocal.x - bottomTranslation.x, y: topMidLocal.y - bottomTranslation.y },
+    -bottomRotation,
+  )
+  const cornersAnchored = cornersLocal.map((p) => {
+    const shifted = { x: p.x - bottomTranslation.x, y: p.y - bottomTranslation.y }
+    return rotatePoint(shifted, -bottomRotation)
+  }) as [Point, Point, Point, Point]
+  const bottomWidthAnchored = Math.hypot(
+    cornersAnchored[1].x - cornersAnchored[0].x,
+    cornersAnchored[1].y - cornersAnchored[0].y,
+  )
+  const topWidthAnchored = Math.hypot(
+    cornersAnchored[2].x - cornersAnchored[3].x,
+    cornersAnchored[2].y - cornersAnchored[3].y,
+  )
+
   return {
     local,
+    anchored: {
+      local: anchoredLocal,
+      metrics: {
+        bottomMid: { x: 0, y: 0 },
+        topMid: topMidAnchored,
+        bottomAngle: 0,
+        topAngle: normalizeAngle(topAngleLocal - bottomAngleLocal),
+        height: topMidAnchored.y,
+        bottomWidth: bottomWidthAnchored,
+        topWidth: topWidthAnchored,
+      },
+      transform: {
+        translation: bottomTranslation,
+        rotation: bottomRotation,
+      },
+    },
     world,
     cornersLocal,
     cornersWorld,
