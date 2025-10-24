@@ -320,6 +320,7 @@ export function GameContainer() {
   const stoneSequenceRef = useRef(0)
   const initializedRef = useRef(false)
   const lastLossCheckBalanceRef = useRef<number | null>(null)
+  const lossEventActiveRef = useRef(false)
 
   const [hoverStoneState, setHoverStoneState] = useState<HoverStone | null>(null)
   const [placingStoneState, setPlacingStoneState] = useState<PlacingStone | null>(null)
@@ -699,6 +700,7 @@ export function GameContainer() {
 
       console.log(`[Loss Event] Losing ${loseCount} stones, severity: ${severity.toFixed(2)}`)
 
+      lossEventActiveRef.current = true // Mark loss event as active
       setPhase("loss")
       setPhysicsActive(true)
       setCanDecide(false)
@@ -764,6 +766,7 @@ export function GameContainer() {
 
         setPhase("stable")
         setPhysicsActive(false)
+        lossEventActiveRef.current = false // Clear loss event flag
         prepareHoverStone()
       }, TUMBLE_DURATION)
     },
@@ -961,10 +964,7 @@ export function GameContainer() {
       accountState.reset()
       let support = DEFAULT_STACK_ORIENTATION
       for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
-        // Top stone gets an angle for better visual feedback, rest are flat
-        const isTopStone = i === INITIAL_STACK_COUNT - 1
-        const initialStance: Stance = isTopStone ? (Math.random() > 0.5 ? "long" : "short") : "flat"
-        const { visual } = consumeNextCandleVisual(initialStance)
+        const { visual } = consumeNextCandleVisual("flat")  // Initial stack uses flat stance
         const trapezoid = makeTrapezoidFromAngles({
           widthBottom: visual.geometry.widthBottom,
           height: visual.geometry.height,
@@ -1271,8 +1271,9 @@ export function GameContainer() {
   useEffect(() => {
     const engine = engineRef.current
     if (!engine) return
-    if (phase !== "hovering" && phase !== "stable") return // Only check between placements
+    if (phase !== "hovering" && phase !== "stable") return // Only check between placements, not during loss/placing
     if (stonesPlaced === 0) return // Can't lose stones if we don't have any
+    if (lossEventActiveRef.current) return // Don't trigger another loss event while one is active
 
     // Only check if equity has changed since last check to prevent infinite loops
     if (lastLossCheckBalanceRef.current === equity) return
@@ -1287,11 +1288,11 @@ export function GameContainer() {
       const severity = calculateLossSeverity(equity, startingBalance)
       console.log(`[Loss Event Triggered] Stones to lose: ${loseCount}, Severity: ${severity.toFixed(2)}`)
 
-      // Apply the P&L penalty (deduct from balance)
-      accountState.applyLossPenalty(loseCount, severity)
-
-      // Trigger the visual tumble effect
+      // Trigger the visual tumble effect (this will set phase to "loss" immediately)
       triggerLossEvent(hoverStance ?? DEFAULT_STANCE, loseCount, severity)
+
+      // Apply the P&L penalty AFTER triggering loss event to prevent re-triggering
+      accountState.applyLossPenalty(loseCount, severity)
     }
   }, [phase, stonesPlaced, triggerLossEvent, hoverStance, equity, startingBalance, accountState])
 
