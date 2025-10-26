@@ -472,6 +472,12 @@ export function GameContainer() {
     const hover = hoverStoneRef.current
     if (!hover || !engineRef.current) return
 
+    // Don't place stones during loss events to prevent gaps in the tower
+    if (lossEventActiveRef.current) {
+      console.log('[Placement] Blocked during loss event')
+      return
+    }
+
     // If there's an active flip transition, complete it immediately before placing
     if (hoverTransitionRef.current) {
       const finalHover = hoverTransitionRef.current.target
@@ -760,6 +766,13 @@ export function GameContainer() {
         // Turn off physics and clear the loss event flag
         setPhysicsActive(false)
         lossEventActiveRef.current = false
+
+        // Reset drop timer so next stone doesn't drop immediately
+        // This gives player time to see the new tower state
+        if (nextDropAtRef.current !== null) {
+          const cadence = DEFAULT_CONFIG.dropCadence / Math.max(0.1, useGameState.getState().timeScale)
+          nextDropAtRef.current = Date.now() + cadence
+        }
       }, TUMBLE_DURATION)
     },
     [recalcStackFromPhysics, setPhysicsActive],
@@ -1041,7 +1054,8 @@ export function GameContainer() {
       if (decisionDeadlineRef.current && currentPhase === "hovering") {
         const remaining = clamp((decisionDeadlineRef.current - now) / Math.max(decisionDurationRef.current, 1), 0, 1)
         setDecisionProgress(remaining)
-        if (remaining <= 0 && currentCanDecide && hoverStoneRef.current) {
+        // Don't drop stones during loss events to prevent gaps in the tower
+        if (remaining <= 0 && currentCanDecide && hoverStoneRef.current && !lossEventActiveRef.current) {
           setCanDecide(false)
           beginPlacementFromHoverRef.current()
         }
