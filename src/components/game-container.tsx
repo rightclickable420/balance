@@ -322,6 +322,8 @@ export function GameContainer() {
   const lastLossCheckBalanceRef = useRef<number | null>(null)
   const lossEventActiveRef = useRef(false)
   const stonesLostInDrawdownRef = useRef(0) // Track cumulative stones lost in current drawdown
+  const pendingLossEventRef = useRef<{ stance: Stance; loseCount: number; severity: number } | null>(null)
+  const lastStonePlacementTimeRef = useRef<number>(0) // Track when last stone was placed
 
   const [hoverStoneState, setHoverStoneState] = useState<HoverStone | null>(null)
   const [placingStoneState, setPlacingStoneState] = useState<PlacingStone | null>(null)
@@ -653,6 +655,9 @@ export function GameContainer() {
     const engine = engineRef.current
     if (!placing || !engine) return
 
+    // Record when this stone was placed for loss event timing
+    lastStonePlacementTimeRef.current = Date.now()
+
     const supportFrame = supportFrameRef.current
     const addedStone = engine.addStone({
       vertices: placing.vertices,
@@ -699,43 +704,81 @@ export function GameContainer() {
       const engine = engineRef.current
       if (!engine || loseCount <= 0) return
 
+      // Check if we're in a safe window (more than 5s since last placement)
+      const timeSinceLastPlacement = Date.now() - lastStonePlacementTimeRef.current
+      const SAFE_WINDOW_MS = 5000 // 5 seconds after stone seats
+
+      if (timeSinceLastPlacement < SAFE_WINDOW_MS) {
+        // Too close to next drop - queue the loss event for later
+        console.log(`[Loss Event] Delaying ${loseCount} stones (${(SAFE_WINDOW_MS - timeSinceLastPlacement) / 1000}s until safe window)`)
+        pendingLossEventRef.current = { stance, loseCount, severity }
+        return
+      }
+
       console.log(`[Loss Event] Losing ${loseCount} stones, severity: ${severity.toFixed(2)}`)
 
       lossEventActiveRef.current = true // Mark loss event as active
+      pendingLossEventRef.current = null // Clear any pending event
+
+      // Activate physics for tumbling stones
+      setPhysicsActive(true)
 
       const stones = engine.getStones()
       if (stones.length === 0) {
         lossEventActiveRef.current = false
+        setPhysicsActive(false)
         return
       }
 
       // Sort stones by height (top stones first)
       const sorted = [...stones].sort((a, b) => computeBodyTop(a) - computeBodyTop(b))
       const drops = sorted.slice(0, Math.min(loseCount, sorted.length))
+      const survivors = sorted.slice(drops.length)
 
-      console.log(`[Loss Event] Stack: ${stones.length}, Dropping: ${drops.length}`)
+      console.log(`[Loss Event] Stack: ${stones.length}, Dropping: ${drops.length}, Survivors: ${survivors.length}`)
 
-      // IMMEDIATELY remove doomed stones from physics engine
-      // This ensures new stones seat correctly on the remaining tower
-      // (keeps market data alignment - one stone per 30s candle)
-      for (const stone of drops) {
-        engine.removeStone(stone)
+      // Keep survivors static and asleep
+      for (const survivor of survivors) {
+        engine.setStoneStatic(survivor, true)
+        Matter.Sleeping.set(survivor.body, true)
       }
 
-      // Recalculate stack and update stone count IMMEDIATELY
-      recalcStackFromPhysics()
-      const newStoneCount = engine.getStones().length
-      useGameState.setState({ stonesPlaced: newStoneCount })
+      // Wake up and launch stones that will tumble off
+      for (const stone of drops) {
+        engine.setStoneStatic(stone, false)
+        Matter.Sleeping.set(stone.body, false)
+        // Set velocity directly for immediate launch effect
+        const direction = Math.random() > 0.5 ? 1 : -1
+        const velocityX = direction * (5 + Math.random() * 3) * (1 + severity)
+        const velocityY = -3 * (1 + severity)
+        const angularVel = direction * (0.1 + Math.random() * 0.1) * severity
+        Matter.Body.setVelocity(stone.body, { x: velocityX, y: velocityY })
+        Matter.Body.setAngularVelocity(stone.body, angularVel)
+        console.log(`[Loss Event] Stone ${stone.id}: vX=${velocityX.toFixed(2)}, vY=${velocityY.toFixed(2)}, aV=${angularVel.toFixed(3)}`)
+      }
 
-      console.log(`[Loss Event] Tower immediately updated: ${newStoneCount} stones remain`)
+      // After tumble animation, remove stones
+      const TUMBLE_DURATION = 3000 // 3 seconds to tumble off
+      setTimeout(() => {
+        console.log(`[Loss Event] Removing ${drops.length} stones after tumble`)
 
-      // TODO: Show visual-only tumbling animation of removed stones
-      // For now, stones just disappear instantly
-      // Future enhancement: render ghost stones with physics that don't interact with tower
+        for (const stone of drops) {
+          engine.removeStone(stone)
+        }
 
-      lossEventActiveRef.current = false
+        // Recalculate stack and update stone count
+        recalcStackFromPhysics()
+        const newStoneCount = engine.getStones().length
+        useGameState.setState({ stonesPlaced: newStoneCount })
+
+        // Turn off physics and clear the loss event flag
+        setPhysicsActive(false)
+        lossEventActiveRef.current = false
+
+        console.log(`[Loss Event] Complete: ${newStoneCount} stones remain`)
+      }, TUMBLE_DURATION)
     },
-    [recalcStackFromPhysics],
+    [recalcStackFromPhysics, setPhysicsActive],
   )
 
   const dropTimerCleanup = useCallback(() => {
@@ -1020,6 +1063,17 @@ export function GameContainer() {
         }
       }
 
+      // Check for pending loss events and trigger if we're in safe window
+      if (pendingLossEventRef.current && !lossEventActiveRef.current) {
+        const timeSinceLastPlacement = now - lastStonePlacementTimeRef.current
+        const SAFE_WINDOW_MS = 5000
+        if (timeSinceLastPlacement >= SAFE_WINDOW_MS) {
+          const pending = pendingLossEventRef.current
+          console.log(`[Loss Event] Triggering pending loss event (${pending.loseCount} stones)`)
+          triggerLossEvent(pending.stance, pending.loseCount, pending.severity)
+        }
+      }
+
       // Smooth tower offset animation
       const currentOffset = state.towerOffset
       const targetOffset = towerOffsetTargetRef.current
@@ -1055,7 +1109,7 @@ export function GameContainer() {
       engine.clear()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [triggerLossEvent])
 
   useEffect(() => {
     if (phase === "hovering") {
