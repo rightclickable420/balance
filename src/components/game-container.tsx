@@ -472,12 +472,6 @@ export function GameContainer() {
     const hover = hoverStoneRef.current
     if (!hover || !engineRef.current) return
 
-    // Don't place stones during loss events to prevent gaps in the tower
-    if (lossEventActiveRef.current) {
-      console.log('[Placement] Blocked during loss event')
-      return
-    }
-
     // If there's an active flip transition, complete it immediately before placing
     if (hoverTransitionRef.current) {
       const finalHover = hoverTransitionRef.current.target
@@ -709,11 +703,6 @@ export function GameContainer() {
 
       lossEventActiveRef.current = true // Mark loss event as active
 
-      // DON'T change phase or stop trading - let it continue in background
-      // DON'T clear hover stone - player should keep trading
-      // Just activate physics for the tumbling stones
-      setPhysicsActive(true)
-
       const stones = engine.getStones()
       if (stones.length === 0) {
         lossEventActiveRef.current = false
@@ -723,59 +712,30 @@ export function GameContainer() {
       // Sort stones by height (top stones first)
       const sorted = [...stones].sort((a, b) => computeBodyTop(a) - computeBodyTop(b))
       const drops = sorted.slice(0, Math.min(loseCount, sorted.length))
-      const survivors = sorted.slice(drops.length)
 
-      console.log(`[Loss Event] Stack: ${stones.length}, Dropping: ${drops.length}, Survivors: ${survivors.length}`)
+      console.log(`[Loss Event] Stack: ${stones.length}, Dropping: ${drops.length}`)
 
-      // Keep survivors static and asleep
-      for (const survivor of survivors) {
-        engine.setStoneStatic(survivor, true)
-        Matter.Sleeping.set(survivor.body, true)
-      }
-
-      // Wake up and apply physics to stones that will tumble
+      // IMMEDIATELY remove doomed stones from physics engine
+      // This ensures new stones seat correctly on the remaining tower
+      // (keeps market data alignment - one stone per 30s candle)
       for (const stone of drops) {
-        engine.setStoneStatic(stone, false)
-        Matter.Sleeping.set(stone.body, false)
-        // Set velocity directly for immediate launch effect (not affected by mass)
-        // This ensures stones get knocked off regardless of their mass
-        const direction = Math.random() > 0.5 ? 1 : -1
-        const velocityX = direction * (5 + Math.random() * 3) * (1 + severity) // Strong horizontal velocity
-        const velocityY = -3 * (1 + severity) // Strong upward velocity (negative = up)
-        const angularVel = direction * (0.1 + Math.random() * 0.1) * severity // Strong rotation
-        Matter.Body.setVelocity(stone.body, { x: velocityX, y: velocityY })
-        Matter.Body.setAngularVelocity(stone.body, angularVel)
-        console.log(`[Loss Event] Stone ${stone.id}: velocityX=${velocityX.toFixed(2)}, velocityY=${velocityY.toFixed(2)}, angularVel=${angularVel.toFixed(3)}`)
+        engine.removeStone(stone)
       }
 
-      // After tumble animation, remove stones with visual effect
-      const TUMBLE_DURATION = 4000 // 4 seconds to watch them tumble (increased for visibility)
-      setTimeout(() => {
-        console.log(`[Loss Event] Removing ${drops.length} stones after tumble`)
+      // Recalculate stack and update stone count IMMEDIATELY
+      recalcStackFromPhysics()
+      const newStoneCount = engine.getStones().length
+      useGameState.setState({ stonesPlaced: newStoneCount })
 
-        // TODO: Add visual "poof" effect here (particle system, fade out, etc.)
-        for (const stone of drops) {
-          engine.removeStone(stone)
-        }
+      console.log(`[Loss Event] Tower immediately updated: ${newStoneCount} stones remain`)
 
-        // Recalculate stack and update stone count
-        recalcStackFromPhysics()
-        const newStoneCount = engine.getStones().length
-        useGameState.setState({ stonesPlaced: newStoneCount })
+      // TODO: Show visual-only tumbling animation of removed stones
+      // For now, stones just disappear instantly
+      // Future enhancement: render ghost stones with physics that don't interact with tower
 
-        // Turn off physics and clear the loss event flag
-        setPhysicsActive(false)
-        lossEventActiveRef.current = false
-
-        // Reset drop timer so next stone doesn't drop immediately
-        // This gives player time to see the new tower state
-        if (nextDropAtRef.current !== null) {
-          const cadence = DEFAULT_CONFIG.dropCadence / Math.max(0.1, useGameState.getState().timeScale)
-          nextDropAtRef.current = Date.now() + cadence
-        }
-      }, TUMBLE_DURATION)
+      lossEventActiveRef.current = false
     },
-    [recalcStackFromPhysics, setPhysicsActive],
+    [recalcStackFromPhysics],
   )
 
   const dropTimerCleanup = useCallback(() => {
@@ -1054,8 +1014,7 @@ export function GameContainer() {
       if (decisionDeadlineRef.current && currentPhase === "hovering") {
         const remaining = clamp((decisionDeadlineRef.current - now) / Math.max(decisionDurationRef.current, 1), 0, 1)
         setDecisionProgress(remaining)
-        // Don't drop stones during loss events to prevent gaps in the tower
-        if (remaining <= 0 && currentCanDecide && hoverStoneRef.current && !lossEventActiveRef.current) {
+        if (remaining <= 0 && currentCanDecide && hoverStoneRef.current) {
           setCanDecide(false)
           beginPlacementFromHoverRef.current()
         }
