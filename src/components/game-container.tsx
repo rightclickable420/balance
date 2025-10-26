@@ -31,6 +31,9 @@ const INITIAL_STACK_COUNT = 10
 const DESIRED_TOP_SCREEN_Y = 240
 const STONE_CANDLE_WINDOW = 30
 const PLACEMENT_DURATION_MS = DEFAULT_CONFIG.placementDuration
+const TUMBLE_DURATION_MS = 3000 // 3 seconds for loss event physics animation
+const SAFE_WINDOW_AFTER_PLACEMENT_MS = 5000 // 5s buffer after stone seats
+const SAFE_WINDOW_BEFORE_DROP_MS = 5000 // 5s buffer before next drop
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
@@ -704,13 +707,24 @@ export function GameContainer() {
       const engine = engineRef.current
       if (!engine || loseCount <= 0) return
 
-      // Check if we're in a safe window (more than 5s since last placement)
-      const timeSinceLastPlacement = Date.now() - lastStonePlacementTimeRef.current
-      const SAFE_WINDOW_MS = 5000 // 5 seconds after stone seats
+      const now = Date.now()
 
-      if (timeSinceLastPlacement < SAFE_WINDOW_MS) {
-        // Too close to next drop - queue the loss event for later
-        console.log(`[Loss Event] Delaying ${loseCount} stones (${(SAFE_WINDOW_MS - timeSinceLastPlacement) / 1000}s until safe window)`)
+      // Check if we're in a safe window:
+      // 1. More than 5s since last placement (stone has settled)
+      const timeSinceLastPlacement = now - lastStonePlacementTimeRef.current
+      const safeAfterPlacement = timeSinceLastPlacement >= SAFE_WINDOW_AFTER_PLACEMENT_MS
+
+      // 2. More than 5s until next drop (won't interfere with incoming stone)
+      // Also need to ensure tumble completes before next drop
+      const timeUntilNextDrop = nextDropAtRef.current ? nextDropAtRef.current - now : Infinity
+      const safeBeforeDrop = timeUntilNextDrop >= (SAFE_WINDOW_BEFORE_DROP_MS + TUMBLE_DURATION_MS)
+
+      if (!safeAfterPlacement || !safeBeforeDrop) {
+        // Not in safe window - queue the loss event for later
+        const reason = !safeAfterPlacement
+          ? `${((SAFE_WINDOW_AFTER_PLACEMENT_MS - timeSinceLastPlacement) / 1000).toFixed(1)}s until safe after placement`
+          : `${((timeUntilNextDrop - SAFE_WINDOW_BEFORE_DROP_MS - TUMBLE_DURATION_MS) / 1000).toFixed(1)}s until safe before next drop`
+        console.log(`[Loss Event] Delaying ${loseCount} stones (${reason})`)
         pendingLossEventRef.current = { stance, loseCount, severity }
         return
       }
@@ -758,7 +772,6 @@ export function GameContainer() {
       }
 
       // After tumble animation, remove stones
-      const TUMBLE_DURATION = 3000 // 3 seconds to tumble off
       setTimeout(() => {
         console.log(`[Loss Event] Removing ${drops.length} stones after tumble`)
 
@@ -776,7 +789,7 @@ export function GameContainer() {
         lossEventActiveRef.current = false
 
         console.log(`[Loss Event] Complete: ${newStoneCount} stones remain`)
-      }, TUMBLE_DURATION)
+      }, TUMBLE_DURATION_MS)
     },
     [recalcStackFromPhysics, setPhysicsActive],
   )
@@ -1066,8 +1079,7 @@ export function GameContainer() {
       // Check for pending loss events and trigger if we're in safe window
       if (pendingLossEventRef.current && !lossEventActiveRef.current) {
         const timeSinceLastPlacement = now - lastStonePlacementTimeRef.current
-        const SAFE_WINDOW_MS = 5000
-        if (timeSinceLastPlacement >= SAFE_WINDOW_MS) {
+        if (timeSinceLastPlacement >= SAFE_WINDOW_AFTER_PLACEMENT_MS) {
           const pending = pendingLossEventRef.current
           console.log(`[Loss Event] Triggering pending loss event (${pending.loseCount} stones)`)
           triggerLossEvent(pending.stance, pending.loseCount, pending.severity)
