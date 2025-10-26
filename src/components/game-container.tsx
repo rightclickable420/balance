@@ -731,12 +731,12 @@ export function GameContainer() {
       for (const stone of drops) {
         engine.setStoneStatic(stone, false)
         Matter.Sleeping.set(stone.body, false)
-        // Apply tumbling force (much stronger to make it visible)
+        // Apply tumbling force (moderate strength for visible but controlled motion)
         // Push sideways to cause tumble off the tower
         const direction = Math.random() > 0.5 ? 1 : -1
-        const pushX = direction * (0.05 + Math.random() * 0.1) * (1 + severity) // 10x stronger
-        const pushY = -0.01 * severity // 10x stronger upward nudge
-        const torque = direction * (0.001 + Math.random() * 0.002) * severity // 10x stronger rotation
+        const pushX = direction * (0.01 + Math.random() * 0.02) * (1 + severity) // 2x-4x stronger than original
+        const pushY = -0.002 * severity // 2x stronger upward nudge
+        const torque = direction * (0.0002 + Math.random() * 0.0004) * severity // 2x-4x stronger rotation
         Matter.Body.applyForce(stone.body, stone.body.position, { x: pushX, y: pushY })
         Matter.Body.setAngularVelocity(stone.body, torque)
         console.log(`[Loss Event] Stone ${stone.id}: pushX=${pushX.toFixed(4)}, pushY=${pushY.toFixed(4)}, torque=${torque.toFixed(4)}`)
@@ -1062,6 +1062,9 @@ export function GameContainer() {
       // Otherwise, only render occasionally to save resources
       const currentPhysicsActive = state.physicsActive
       if (currentPhysicsActive) {
+        // Step the physics simulation forward
+        const deltaTime = 1000 / 60 // 60fps = ~16.67ms per frame
+        engine.update(deltaTime)
         setRenderTrigger((v) => v + 1) // Always update when physics active
       } else if (Math.random() < 0.1) {
         setRenderTrigger((v) => v + 1) // 10% chance otherwise
