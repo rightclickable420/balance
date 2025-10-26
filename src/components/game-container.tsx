@@ -1305,7 +1305,7 @@ export function GameContainer() {
   // Check for loss events based on equity drawdown (includes unrealized P&L)
   // Subscribe to equity changes from account state
   const equity = useAccountState((state) => state.equity)
-  const startingBalance = useAccountState((state) => state.startingBalance)
+  const peakEquity = useAccountState((state) => state.peakEquity)
 
   useEffect(() => {
     const engine = engineRef.current
@@ -1318,23 +1318,23 @@ export function GameContainer() {
     if (lastLossCheckBalanceRef.current === equity) return
     lastLossCheckBalanceRef.current = equity
 
-    console.log(`[Loss Check] Equity: $${equity.toFixed(2)}, Starting: $${startingBalance.toFixed(2)}, Loss: ${((1 - equity/startingBalance) * 100).toFixed(1)}%`)
+    console.log(`[Loss Check] Equity: $${equity.toFixed(2)}, Peak: $${peakEquity.toFixed(2)}, Drawdown: ${((1 - equity/peakEquity) * 100).toFixed(1)}%`)
 
     // Check if equity has recovered - if so, reset the stones lost counter
-    const currentLoss = (startingBalance - equity) / startingBalance
-    if (currentLoss < 0.05) {
-      // Equity recovered above 5% loss threshold - reset counter
+    const currentDrawdown = (peakEquity - equity) / peakEquity
+    if (currentDrawdown < 0.05) {
+      // Equity recovered above 5% drawdown threshold - reset counter
       stonesLostInDrawdownRef.current = 0
     }
 
-    // Check if we've hit a loss threshold based on equity (not balance)
-    const loseCount = stonesToLoseFromDrawdown(equity, startingBalance, stonesPlaced)
+    // Check if we've hit a loss threshold based on peak-to-current equity drawdown
+    const loseCount = stonesToLoseFromDrawdown(equity, peakEquity, stonesPlaced)
 
     // Only trigger if we need to lose MORE stones than we've already lost
     const stonesToLoseNow = Math.max(0, loseCount - stonesLostInDrawdownRef.current)
 
     if (stonesToLoseNow > 0) {
-      const severity = calculateLossSeverity(equity, startingBalance)
+      const severity = calculateLossSeverity(equity, peakEquity)
       console.log(`[Loss Event Triggered] Total should lose: ${loseCount}, Already lost: ${stonesLostInDrawdownRef.current}, Losing now: ${stonesToLoseNow}, Severity: ${severity.toFixed(2)}`)
 
       // Track that we're losing these stones
@@ -1346,7 +1346,7 @@ export function GameContainer() {
       // only change when positions are actually closed, not when stones tumble off.
       triggerLossEvent(hoverStance ?? DEFAULT_STANCE, stonesToLoseNow, severity)
     }
-  }, [phase, stonesPlaced, triggerLossEvent, hoverStance, equity, startingBalance, accountState])
+  }, [phase, stonesPlaced, triggerLossEvent, hoverStance, equity, peakEquity, accountState])
 
   return (
     <div ref={containerRef} className="relative touch-none">

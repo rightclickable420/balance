@@ -22,6 +22,7 @@ interface AccountState {
   balance: number
   realizedPnl: number
   equity: number
+  peakEquity: number // Track highest equity reached for drawdown calculation
   lastPrice: number | null
   positionNotional: number
   history: AccountSnapshot[]
@@ -47,6 +48,7 @@ export const useAccountState = create<AccountState>((set, get) => ({
   balance: DEFAULT_STARTING_BALANCE,
   realizedPnl: 0,
   equity: DEFAULT_STARTING_BALANCE,
+  peakEquity: DEFAULT_STARTING_BALANCE, // Start at initial balance
   lastPrice: null,
   positionNotional: DEFAULT_POSITION_NOTIONAL,
   history: [],
@@ -88,6 +90,9 @@ export const useAccountState = create<AccountState>((set, get) => ({
       const newBalance = state.balance + realizedFromFlip
       const newRealizedPnl = state.realizedPnl + realizedFromFlip
 
+      // Update peak equity if we're at a new high
+      const updatedPeakEquity = Math.max(newBalance, state.peakEquity)
+
       set({
         balance: newBalance,
         realizedPnl: newRealizedPnl,
@@ -95,6 +100,7 @@ export const useAccountState = create<AccountState>((set, get) => ({
         currentPositionStance: stance,
         unrealizedPnl: 0, // Fresh position starts at 0 unrealized
         equity: newBalance,
+        peakEquity: updatedPeakEquity,
         lastPrice: currentPrice,
       })
       return
@@ -141,9 +147,13 @@ export const useAccountState = create<AccountState>((set, get) => ({
       return
     }
 
+    // Update peak equity if we're at a new high
+    const updatedPeakEquity = Math.max(nextEquity, state.peakEquity)
+
     set({
       unrealizedPnl: unrealized,
       equity: nextEquity,
+      peakEquity: updatedPeakEquity,
     })
   },
 
@@ -252,6 +262,7 @@ export const useAccountState = create<AccountState>((set, get) => ({
       balance: DEFAULT_STARTING_BALANCE,
       realizedPnl: 0,
       equity: DEFAULT_STARTING_BALANCE,
+      peakEquity: DEFAULT_STARTING_BALANCE, // Reset peak to starting balance
       lastPrice: null,
       history: [],
       unrealizedPnl: 0,
