@@ -32,8 +32,8 @@ const DESIRED_TOP_SCREEN_Y = 240
 const STONE_CANDLE_WINDOW = 30
 const PLACEMENT_DURATION_MS = DEFAULT_CONFIG.placementDuration
 const TUMBLE_DURATION_MS = 3000 // 3 seconds for loss event physics animation
-const SAFE_WINDOW_AFTER_PLACEMENT_MS = 5000 // 5s buffer after stone seats
-const SAFE_WINDOW_BEFORE_DROP_MS = 5000 // 5s buffer before next drop
+const SAFE_WINDOW_AFTER_PLACEMENT_MS = 1500 // 1.5s buffer after stone seats
+const SAFE_WINDOW_BEFORE_DROP_MS = 1500 // 1.5s buffer before next drop (total 3s buffer)
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
@@ -476,6 +476,19 @@ export function GameContainer() {
   const beginPlacementFromHover = useCallback(() => {
     const hover = hoverStoneRef.current
     if (!hover || !engineRef.current) return
+
+    // Don't place stones during active loss events to prevent gaps
+    if (lossEventActiveRef.current) {
+      console.log('[Placement] Blocked - loss event in progress')
+      // Reschedule the drop for after the loss event completes
+      const retryDelay = 500 // Check again in 500ms
+      setTimeout(() => {
+        if (!lossEventActiveRef.current && hoverStoneRef.current) {
+          beginPlacementFromHover()
+        }
+      }, retryDelay)
+      return
+    }
 
     // If there's an active flip transition, complete it immediately before placing
     if (hoverTransitionRef.current) {
