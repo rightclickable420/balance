@@ -1378,7 +1378,9 @@ export function GameContainer() {
   useEffect(() => {
     const engine = engineRef.current
     if (!engine) return
-    if (phase !== "hovering" && phase !== "stable") return // Only check between placements, not during loss/placing
+    // ONLY check during hovering phase - this is the safe window
+    // Never check during "stable" (just seated) or "placing" (stone dropping)
+    if (phase !== "hovering") return
     if (stonesPlaced === 0) return // Can't lose stones if we don't have any
     if (lossEventActiveRef.current) return // Don't trigger another loss event while one is active
 
