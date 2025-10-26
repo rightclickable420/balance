@@ -731,12 +731,12 @@ export function GameContainer() {
       for (const stone of drops) {
         engine.setStoneStatic(stone, false)
         Matter.Sleeping.set(stone.body, false)
-        // Apply tumbling force (moderate strength for visible but controlled motion)
+        // Apply tumbling force with bigger nudge to ensure stones tumble off tower
         // Push sideways to cause tumble off the tower
         const direction = Math.random() > 0.5 ? 1 : -1
-        const pushX = direction * (0.01 + Math.random() * 0.02) * (1 + severity) // 2x-4x stronger than original
-        const pushY = -0.002 * severity // 2x stronger upward nudge
-        const torque = direction * (0.0002 + Math.random() * 0.0004) * severity // 2x-4x stronger rotation
+        const pushX = direction * (0.03 + Math.random() * 0.04) * (1 + severity) // Stronger horizontal push
+        const pushY = -0.005 * severity // Small upward nudge
+        const torque = direction * (0.0005 + Math.random() * 0.001) * severity // Stronger rotation
         Matter.Body.applyForce(stone.body, stone.body.position, { x: pushX, y: pushY })
         Matter.Body.setAngularVelocity(stone.body, torque)
         console.log(`[Loss Event] Stone ${stone.id}: pushX=${pushX.toFixed(4)}, pushY=${pushY.toFixed(4)}, torque=${torque.toFixed(4)}`)
