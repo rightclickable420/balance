@@ -731,15 +731,15 @@ export function GameContainer() {
       for (const stone of drops) {
         engine.setStoneStatic(stone, false)
         Matter.Sleeping.set(stone.body, false)
-        // Apply VERY strong tumbling force to guarantee stones fly off tower
-        // Push sideways and upward to launch them off
+        // Set velocity directly for immediate launch effect (not affected by mass)
+        // This ensures stones get knocked off regardless of their mass
         const direction = Math.random() > 0.5 ? 1 : -1
-        const pushX = direction * (0.5 + Math.random() * 0.3) * (1 + severity) // Extremely strong horizontal push
-        const pushY = -0.1 * (1 + severity) // Strong upward launch
-        const torque = direction * (0.01 + Math.random() * 0.01) * severity // Very strong rotation
-        Matter.Body.applyForce(stone.body, stone.body.position, { x: pushX, y: pushY })
-        Matter.Body.setAngularVelocity(stone.body, torque)
-        console.log(`[Loss Event] Stone ${stone.id}: pushX=${pushX.toFixed(4)}, pushY=${pushY.toFixed(4)}, torque=${torque.toFixed(4)}`)
+        const velocityX = direction * (5 + Math.random() * 3) * (1 + severity) // Strong horizontal velocity
+        const velocityY = -3 * (1 + severity) // Strong upward velocity (negative = up)
+        const angularVel = direction * (0.1 + Math.random() * 0.1) * severity // Strong rotation
+        Matter.Body.setVelocity(stone.body, { x: velocityX, y: velocityY })
+        Matter.Body.setAngularVelocity(stone.body, angularVel)
+        console.log(`[Loss Event] Stone ${stone.id}: velocityX=${velocityX.toFixed(2)}, velocityY=${velocityY.toFixed(2)}, angularVel=${angularVel.toFixed(3)}`)
       }
 
       // After tumble animation, remove stones with visual effect
