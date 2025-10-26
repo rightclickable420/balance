@@ -478,15 +478,9 @@ export function GameContainer() {
     if (!hover || !engineRef.current) return
 
     // Don't place stones during active loss events to prevent gaps
+    // Just skip this placement - the next scheduled drop will handle it
     if (lossEventActiveRef.current) {
-      console.log('[Placement] Blocked - loss event in progress')
-      // Reschedule the drop for after the loss event completes
-      const retryDelay = 500 // Check again in 500ms
-      setTimeout(() => {
-        if (!lossEventActiveRef.current && hoverStoneRef.current) {
-          beginPlacementFromHover()
-        }
-      }, retryDelay)
+      console.log('[Placement] Blocked - loss event in progress, skipping this drop')
       return
     }
 
