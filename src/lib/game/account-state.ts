@@ -248,6 +248,7 @@ export const useAccountState = create<AccountState>((set, get) => ({
 
   reset: () =>
     set({
+      startingBalance: DEFAULT_STARTING_BALANCE, // Reset to fresh starting balance
       balance: DEFAULT_STARTING_BALANCE,
       realizedPnl: 0,
       equity: DEFAULT_STARTING_BALANCE,
