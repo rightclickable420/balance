@@ -771,7 +771,7 @@ export function GameContainer() {
         console.log(`[Loss Event] Stone ${stone.id}: vX=${velocityX.toFixed(2)}, vY=${velocityY.toFixed(2)}, aV=${angularVel.toFixed(3)}`)
       }
 
-      // After tumble animation, remove stones
+      // After tumble animation, remove stones and regenerate if needed
       setTimeout(() => {
         console.log(`[Loss Event] Removing ${drops.length} stones after tumble`)
 
@@ -781,7 +781,62 @@ export function GameContainer() {
 
         // Recalculate stack and update stone count
         recalcStackFromPhysics()
-        const newStoneCount = engine.getStones().length
+        let newStoneCount = engine.getStones().length
+
+        // Regenerate stones at bottom of stack to maintain minimum height
+        const MIN_STACK_COUNT = INITIAL_STACK_COUNT
+        if (newStoneCount < MIN_STACK_COUNT) {
+          const stonesToAdd = MIN_STACK_COUNT - newStoneCount
+          console.log(`[Loss Event] Regenerating ${stonesToAdd} stones at bottom to maintain minimum stack`)
+
+          // Add flat stones to the bottom of the stack
+          // Get the bottom-most stone to stack below it
+          const existingStones = engine.getStones()
+          let baseY = GROUND_Y
+          if (existingStones.length > 0) {
+            // Find the lowest stone
+            const lowestStone = existingStones.reduce((lowest, stone) => {
+              const stoneBottom = stone.body.position.y + (stone.body.bounds.max.y - stone.body.position.y)
+              const lowestBottom = lowest.body.position.y + (lowest.body.bounds.max.y - lowest.body.position.y)
+              return stoneBottom > lowestBottom ? stone : lowest
+            })
+            baseY = lowestStone.body.position.y + (lowestStone.body.bounds.max.y - lowestStone.body.position.y)
+          }
+
+          for (let i = 0; i < stonesToAdd; i++) {
+            const { visual } = consumeNextCandleVisual("flat")
+            const trapezoid = makeTrapezoidFromAngles({
+              widthBottom: visual.geometry.widthBottom,
+              height: visual.geometry.height,
+              taper: visual.geometry.taper,
+              round: visual.geometry.round,
+              betaGlobal: visual.geometry.beta,
+              tauGlobal: visual.geometry.tau,
+              prevTopAngleGlobal: 0,
+              segments: 5,
+            })
+
+            // Stack stones downward from base
+            const yPos = baseY + (i * trapezoid.metrics.heightLocal) + trapezoid.metrics.heightLocal / 2
+            const stone = engine.addStone({
+              vertices: trapezoid.local,
+              params: visual.params,
+              x: CANVAS_WIDTH / 2,
+              y: yPos,
+              color: visual.color,
+              topAngle: normalizeAngle(trapezoid.anchored.transform.rotation + trapezoid.anchored.metrics.topAngle),
+              anchor: trapezoid.anchored,
+              supportTargetX: CANVAS_WIDTH / 2,
+            })
+
+            engine.setStoneStatic(stone, true)
+            Matter.Sleeping.set(stone.body, true)
+          }
+
+          recalcStackFromPhysics()
+          newStoneCount = engine.getStones().length
+        }
+
         useGameState.setState({ stonesPlaced: newStoneCount })
 
         // Turn off physics and clear the loss event flag
@@ -791,7 +846,7 @@ export function GameContainer() {
         console.log(`[Loss Event] Complete: ${newStoneCount} stones remain`)
       }, TUMBLE_DURATION_MS)
     },
-    [recalcStackFromPhysics, setPhysicsActive],
+    [recalcStackFromPhysics, setPhysicsActive, consumeNextCandleVisual],
   )
 
   const dropTimerCleanup = useCallback(() => {
