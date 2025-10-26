@@ -321,6 +321,7 @@ export function GameContainer() {
   const initializedRef = useRef(false)
   const lastLossCheckBalanceRef = useRef<number | null>(null)
   const lossEventActiveRef = useRef(false)
+  const stonesLostInDrawdownRef = useRef(0) // Track cumulative stones lost in current drawdown
 
   const [hoverStoneState, setHoverStoneState] = useState<HoverStone | null>(null)
   const [placingStoneState, setPlacingStoneState] = useState<PlacingStone | null>(null)
@@ -730,18 +731,19 @@ export function GameContainer() {
       for (const stone of drops) {
         engine.setStoneStatic(stone, false)
         Matter.Sleeping.set(stone.body, false)
-        // Apply tumbling force (stronger for higher severity)
+        // Apply tumbling force (much stronger to make it visible)
         // Push sideways to cause tumble off the tower
         const direction = Math.random() > 0.5 ? 1 : -1
-        const pushX = direction * (0.005 + Math.random() * 0.01) * (1 + severity)
-        const pushY = -0.001 * severity // Slight upward nudge
-        const torque = direction * (0.0001 + Math.random() * 0.0002) * severity
+        const pushX = direction * (0.05 + Math.random() * 0.1) * (1 + severity) // 10x stronger
+        const pushY = -0.01 * severity // 10x stronger upward nudge
+        const torque = direction * (0.001 + Math.random() * 0.002) * severity // 10x stronger rotation
         Matter.Body.applyForce(stone.body, stone.body.position, { x: pushX, y: pushY })
         Matter.Body.setAngularVelocity(stone.body, torque)
+        console.log(`[Loss Event] Stone ${stone.id}: pushX=${pushX.toFixed(4)}, pushY=${pushY.toFixed(4)}, torque=${torque.toFixed(4)}`)
       }
 
       // After tumble animation, remove stones with visual effect
-      const TUMBLE_DURATION = 2000 // 2 seconds to watch them tumble
+      const TUMBLE_DURATION = 4000 // 4 seconds to watch them tumble (increased for visibility)
       setTimeout(() => {
         console.log(`[Loss Event] Removing ${drops.length} stones after tumble`)
 
@@ -1056,8 +1058,13 @@ export function GameContainer() {
         setTowerOffset(targetOffset)
       }
 
-      if (Math.random() < 0.1) {
-        setRenderTrigger((v) => v + 1)
+      // Force frequent renders when physics is active for smooth tumbling animation
+      // Otherwise, only render occasionally to save resources
+      const currentPhysicsActive = state.physicsActive
+      if (currentPhysicsActive) {
+        setRenderTrigger((v) => v + 1) // Always update when physics active
+      } else if (Math.random() < 0.1) {
+        setRenderTrigger((v) => v + 1) // 10% chance otherwise
       }
 
       animationFrameRef.current = requestAnimationFrame(step)
@@ -1271,18 +1278,31 @@ export function GameContainer() {
 
     console.log(`[Loss Check] Equity: $${equity.toFixed(2)}, Starting: $${startingBalance.toFixed(2)}, Loss: ${((1 - equity/startingBalance) * 100).toFixed(1)}%`)
 
+    // Check if equity has recovered - if so, reset the stones lost counter
+    const currentLoss = (startingBalance - equity) / startingBalance
+    if (currentLoss < 0.05) {
+      // Equity recovered above 5% loss threshold - reset counter
+      stonesLostInDrawdownRef.current = 0
+    }
+
     // Check if we've hit a loss threshold based on equity (not balance)
     const loseCount = stonesToLoseFromDrawdown(equity, startingBalance, stonesPlaced)
 
-    if (loseCount > 0) {
+    // Only trigger if we need to lose MORE stones than we've already lost
+    const stonesToLoseNow = Math.max(0, loseCount - stonesLostInDrawdownRef.current)
+
+    if (stonesToLoseNow > 0) {
       const severity = calculateLossSeverity(equity, startingBalance)
-      console.log(`[Loss Event Triggered] Stones to lose: ${loseCount}, Severity: ${severity.toFixed(2)}`)
+      console.log(`[Loss Event Triggered] Total should lose: ${loseCount}, Already lost: ${stonesLostInDrawdownRef.current}, Losing now: ${stonesToLoseNow}, Severity: ${severity.toFixed(2)}`)
+
+      // Track that we're losing these stones
+      stonesLostInDrawdownRef.current += stonesToLoseNow
 
       // Trigger the visual tumble effect
       // NOTE: We don't call applyLossPenalty() because loss events are triggered by
       // unrealized P&L (equity drop), not by closing positions. The balance should
       // only change when positions are actually closed, not when stones tumble off.
-      triggerLossEvent(hoverStance ?? DEFAULT_STANCE, loseCount, severity)
+      triggerLossEvent(hoverStance ?? DEFAULT_STANCE, stonesToLoseNow, severity)
     }
   }, [phase, stonesPlaced, triggerLossEvent, hoverStance, equity, startingBalance, accountState])
 
