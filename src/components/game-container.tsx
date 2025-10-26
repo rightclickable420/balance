@@ -701,24 +701,15 @@ export function GameContainer() {
       console.log(`[Loss Event] Losing ${loseCount} stones, severity: ${severity.toFixed(2)}`)
 
       lossEventActiveRef.current = true // Mark loss event as active
-      setPhase("loss")
+
+      // DON'T change phase or stop trading - let it continue in background
+      // DON'T clear hover stone - player should keep trading
+      // Just activate physics for the tumbling stones
       setPhysicsActive(true)
-      setCanDecide(false)
-      setDecisionProgress(0)
-      setPlacementProgress(0)
-      hoverTransitionRef.current = null
-      setHoverStone(null)
-      setPlacingStone(null)
-      hoverStoneRef.current = null
-      placingStoneRef.current = null
-      nextDropAtRef.current = null
-      clearDropTimer()
 
       const stones = engine.getStones()
       if (stones.length === 0) {
-        setPhase("stable")
-        setPhysicsActive(false)
-        prepareHoverStone()
+        lossEventActiveRef.current = false
         return
       }
 
@@ -759,18 +750,17 @@ export function GameContainer() {
           engine.removeStone(stone)
         }
 
-        // Recalculate stack, update stone count, and resume game
+        // Recalculate stack and update stone count
         recalcStackFromPhysics()
         const newStoneCount = engine.getStones().length
         useGameState.setState({ stonesPlaced: newStoneCount })
 
-        setPhase("stable")
+        // Turn off physics and clear the loss event flag
         setPhysicsActive(false)
-        lossEventActiveRef.current = false // Clear loss event flag
-        prepareHoverStone()
+        lossEventActiveRef.current = false
       }, TUMBLE_DURATION)
     },
-    [clearDropTimer, prepareHoverStone, recalcStackFromPhysics, setCanDecide, setDecisionProgress, setHoverStone, setPhase, setPlacingStone, setPhysicsActive, setPlacementProgress],
+    [recalcStackFromPhysics, setPhysicsActive],
   )
 
   const dropTimerCleanup = useCallback(() => {
@@ -1288,11 +1278,11 @@ export function GameContainer() {
       const severity = calculateLossSeverity(equity, startingBalance)
       console.log(`[Loss Event Triggered] Stones to lose: ${loseCount}, Severity: ${severity.toFixed(2)}`)
 
-      // Trigger the visual tumble effect (this will set phase to "loss" immediately)
+      // Trigger the visual tumble effect
+      // NOTE: We don't call applyLossPenalty() because loss events are triggered by
+      // unrealized P&L (equity drop), not by closing positions. The balance should
+      // only change when positions are actually closed, not when stones tumble off.
       triggerLossEvent(hoverStance ?? DEFAULT_STANCE, loseCount, severity)
-
-      // Apply the P&L penalty AFTER triggering loss event to prevent re-triggering
-      accountState.applyLossPenalty(loseCount, severity)
     }
   }, [phase, stonesPlaced, triggerLossEvent, hoverStance, equity, startingBalance, accountState])
 
