@@ -245,10 +245,9 @@ const seatStoneOnSupport = (
   const topAngleInAnchor = -(anchor.metrics.topAngle ?? 0)
   const bottomAngleInAnchor = -(anchor.metrics.bottomAngle ?? 0)
 
-  // Calculate body angle: align the BOTTOM face (whichever is physically on bottom) with support
-  // For normal (long/flat): use the geometric bottom
-  // For flipped (short): the geometric TOP is now the physical bottom
-  const bottomFaceAngle = isFlipped ? topAngleInAnchor : bottomAngleInAnchor
+  // Calculate body angle: align the BOTTOM face with support
+  // No additional rotation needed - the geometry itself is already alternating
+  const bottomFaceAngle = bottomAngleInAnchor
   const targetBodyAngle = normalizeAngle(support.angle - anchorRotation - bottomFaceAngle)
 
   Matter.Body.setAngle(stone.body, targetBodyAngle)
@@ -256,9 +255,8 @@ const seatStoneOnSupport = (
   stone.isFlipped = isFlipped
 
   // Calculate and store the exact top angle to prevent drift accumulation
-  // For normal: geometric top is physical top
-  // For flipped: geometric bottom is physical top
-  const topFaceAngle = isFlipped ? bottomAngleInAnchor : topAngleInAnchor
+  // The geometry alternates, so just use the top face angle directly
+  const topFaceAngle = topAngleInAnchor
   const exactTopAngle = normalizeAngle(targetBodyAngle + anchorRotation + topFaceAngle)
   stone.topAngle = exactTopAngle
 
@@ -567,13 +565,17 @@ export function GameContainer() {
     const support = stackOrientationRef.current
     const prevTopAngle = support.angle
 
+    // Create trapezoid with bottom face matching support angle for perfect seating
+    // Use the candle's beta/tau as relative offsets to determine the stone's angle spread
+    const angleSpread = visual.geometry.tau - visual.geometry.beta
+
     const trapezoid = makeTrapezoidFromAngles({
       widthBottom: visual.geometry.widthBottom,
       height: visual.geometry.height,
       taper: visual.geometry.taper,
       round: visual.geometry.round,
-      betaGlobal: prevTopAngle + visual.geometry.beta,
-      tauGlobal: prevTopAngle + visual.geometry.tau,
+      betaGlobal: prevTopAngle,  // Bottom face matches support exactly
+      tauGlobal: prevTopAngle + angleSpread,  // Top face uses the spread
       prevTopAngleGlobal: prevTopAngle,
       segments: 5,
     })
@@ -796,48 +798,72 @@ export function GameContainer() {
           const stonesToAdd = MIN_STACK_COUNT - newStoneCount
           console.log(`[Loss Event] Regenerating ${stonesToAdd} stones at bottom to maintain minimum stack`)
 
-          // Add flat stones to the bottom of the stack
-          // Get the bottom-most stone to stack below it
-          const existingStones = engine.getStones()
-          let baseY = GROUND_Y
-          if (existingStones.length > 0) {
-            // Find the lowest stone
-            const lowestStone = existingStones.reduce((lowest, stone) => {
-              const stoneBottom = stone.body.position.y + (stone.body.bounds.max.y - stone.body.position.y)
-              const lowestBottom = lowest.body.position.y + (lowest.body.bounds.max.y - lowest.body.position.y)
-              return stoneBottom > lowestBottom ? stone : lowest
-            })
-            baseY = lowestStone.body.position.y + (lowestStone.body.bounds.max.y - lowestStone.body.position.y)
-          }
+          // Build a new support from ground up matching initial tower pattern
+          let support: StackOrientation = DEFAULT_STACK_ORIENTATION
 
           for (let i = 0; i < stonesToAdd; i++) {
-            const { visual } = consumeNextCandleVisual("flat")
+            // Regenerated stones should match initial tower - don't use candle data
+            const stance: Stance = i % 2 === 0 ? "long" : "short"
+            const { visual } = consumeNextCandleVisual(stance)
+
+            // Fixed dimensions matching initial tower
+            const INITIAL_WIDTH = 120
+            const INITIAL_HEIGHT = 48
+            const INITIAL_TAPER = 0.85
+
+            const angle = 0.1745 // 10 degrees (same as initial tower)
+
+            // Special case: first stone must have flat bottom (0°) to sit on horizontal floor
+            const isFlipped = (i % 2 === 1)
+            let betaGlobal, tauGlobal
+
+            if (i === 0) {
+              // First stone: flat bottom (0°), angled top (+10°) to match next stone's bottom
+              betaGlobal = 0
+              tauGlobal = angle
+            } else {
+              // Alternate the trapezoid angles to create interlocking pattern
+              // Even stones: -10° bottom, +10° top (wide on right)
+              // Odd stones: +10° bottom, -10° top (wide on left)
+              betaGlobal = isFlipped ? angle : -angle
+              tauGlobal = isFlipped ? -angle : angle
+            }
+
             const trapezoid = makeTrapezoidFromAngles({
-              widthBottom: visual.geometry.widthBottom,
-              height: visual.geometry.height,
-              taper: visual.geometry.taper,
+              widthBottom: INITIAL_WIDTH,
+              height: INITIAL_HEIGHT,
+              taper: INITIAL_TAPER,
               round: visual.geometry.round,
-              betaGlobal: visual.geometry.beta,
-              tauGlobal: visual.geometry.tau,
+              betaGlobal,
+              tauGlobal,
               prevTopAngleGlobal: 0,
               segments: 5,
             })
 
-            // Stack stones downward from base
-            const yPos = baseY + (i * trapezoid.metrics.heightLocal) + trapezoid.metrics.heightLocal / 2
+            // Use the trapezoid as-is, no rotation needed
+            const localVertices = trapezoid.local
+            const vertices = localVertices
+
+            // Calculate metrics without rotation
+            const metricsWorld = deriveWorldMetrics(trapezoid.metrics, 0)
+            const topAngle = normalizeAngle(metricsWorld.topAngle)
+
             const stone = engine.addStone({
-              vertices: trapezoid.local,
+              vertices,
               params: visual.params,
-              x: CANVAS_WIDTH / 2,
-              y: yPos,
+              x: support.supportPoint.x,
+              y: support.supportPoint.y,
               color: visual.color,
-              topAngle: normalizeAngle(trapezoid.anchored.transform.rotation + trapezoid.anchored.metrics.topAngle),
+              topAngle,
               anchor: trapezoid.anchored,
-              supportTargetX: CANVAS_WIDTH / 2,
+              supportTargetX: support.supportPoint.x,
             })
 
             engine.setStoneStatic(stone, true)
+            // Use the isFlipped flag we already computed above
+            seatStoneOnSupport(stone, support, isFlipped)
             Matter.Sleeping.set(stone.body, true)
+            support = deriveSupportFrame(stone)
           }
 
           recalcStackFromPhysics()
@@ -1047,38 +1073,82 @@ export function GameContainer() {
       accountState.reset()
       let support = DEFAULT_STACK_ORIENTATION
       for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
-        const { visual } = consumeNextCandleVisual("flat")  // Initial stack uses flat stance
+        // Alternate orientation to create angled initial tower with matching faces
+        // Initial tower stones should be consistent - don't use candle data
+        // We only consume candle visuals to get colors for alternating long/short
+        const stance: Stance = i % 2 === 0 ? "long" : "short"
+        const { visual } = consumeNextCandleVisual(stance)
+
+        // Fixed dimensions for initial tower stones
+        const INITIAL_WIDTH = 120
+        const INITIAL_HEIGHT = 48
+        const INITIAL_TAPER = 0.85
+
+        // 10° angle in radians (~0.1745)
+        const angle = 0.1745 // 10 degrees
+
+        // Special case: first stone must have flat bottom (0°) to sit on horizontal floor
+        // Then alternate the rest
+        const isFlipped = (i % 2 === 1)
+        let betaGlobal, tauGlobal
+
+        if (i === 0) {
+          // First stone: flat bottom (0°), angled top (+10°) to match next stone's bottom
+          betaGlobal = 0
+          tauGlobal = angle
+        } else {
+          // Alternate the trapezoid angles to create interlocking pattern
+          // Even stones: -10° bottom, +10° top (wide on right)
+          // Odd stones: +10° bottom, -10° top (wide on left)
+          betaGlobal = isFlipped ? angle : -angle
+          tauGlobal = isFlipped ? -angle : angle
+        }
+
         const trapezoid = makeTrapezoidFromAngles({
-          widthBottom: visual.geometry.widthBottom,
-          height: visual.geometry.height,
-          taper: visual.geometry.taper,
+          widthBottom: INITIAL_WIDTH,
+          height: INITIAL_HEIGHT,
+          taper: INITIAL_TAPER,
           round: visual.geometry.round,
-          betaGlobal: support.angle,
-          tauGlobal: support.angle,
-          prevTopAngleGlobal: support.angle,
+          betaGlobal,
+          tauGlobal,
+          prevTopAngleGlobal: 0,
           segments: 5,
         })
+
+        // Use the trapezoid as-is, no rotation needed
         const localVertices = trapezoid.local
-        const { baseOrientation } = resolveBaseOrientation(support.angle, 0)
-        const bodyAngle = normalizeAngle(baseOrientation - trapezoid.metrics.bottomAngleLocal)
-        const vertices = orientVertices(localVertices, bodyAngle)
-        const metricsWorld = deriveWorldMetrics(trapezoid.metrics, bodyAngle)
-        const highlightAngle = normalizeAngle(metricsWorld.topAngle)
-        const placement = solvePlacement(trapezoid.anchored, bodyAngle, support)
+        const vertices = localVertices
+
+        // Calculate metrics without rotation
+        const metricsWorld = deriveWorldMetrics(trapezoid.metrics, 0)
+        const topAngle = normalizeAngle(metricsWorld.topAngle)
+
         const stone = engine.addStone({
           vertices,
           params: visual.params,
-          x: placement.position.x,
-          y: placement.position.y,
+          x: support.supportPoint.x,
+          y: support.supportPoint.y,
           color: visual.color,
-          topAngle: highlightAngle,
+          topAngle,
           anchor: trapezoid.anchored,
           supportTargetX: support.supportPoint.x,
         })
+
         engine.setStoneStatic(stone, true)
-        seatStoneOnSupport(stone, support, false) // Initial stack uses flat/normal orientation
+        // Use the isFlipped flag we already computed above
+        seatStoneOnSupport(stone, support, isFlipped)
         Matter.Sleeping.set(stone.body, true)
+
         support = deriveSupportFrame(stone)
+
+        // Log the support point drift to verify tower is building straight
+        if (i === 0) {
+          console.log(`Initial support X: ${support.supportPoint.x.toFixed(2)}`)
+        } else if (i === INITIAL_STACK_COUNT - 1) {
+          const initialX = 400 // DEFAULT_STACK_ORIENTATION.supportPoint.x
+          const drift = support.supportPoint.x - initialX
+          console.log(`Final support X: ${support.supportPoint.x.toFixed(2)}, Total drift: ${drift.toFixed(2)}px over ${INITIAL_STACK_COUNT} stones`)
+        }
       }
       recalcStackFromPhysics()
       useGameState.setState({ stonesPlaced: INITIAL_STACK_COUNT })
