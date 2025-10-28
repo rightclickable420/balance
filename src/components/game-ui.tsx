@@ -220,10 +220,10 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
           </div>
         )}
 
-        {/* Bottom Controls Panel */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/90 to-transparent backdrop-blur-lg px-6 py-6 pb-10 pointer-events-auto">
+        {/* Expanded Bottom Controls Panel */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/90 to-black/70 backdrop-blur-lg px-6 pt-12 pb-12 pointer-events-auto">
           {/* Leverage Control */}
-          <div className="flex flex-col gap-3 mb-5">
+          <div className="flex flex-col gap-4 mb-8">
             <div className="flex items-baseline justify-between">
               <div className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Leverage</div>
               <div className={`text-4xl font-black tabular-nums ${

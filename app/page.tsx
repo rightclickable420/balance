@@ -8,11 +8,11 @@ export default function Home() {
   const isMobile = useIsMobile()
 
   return (
-    <main className={`min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#12121a] to-[#1a1a28] flex flex-col items-center ${isMobile ? 'justify-end p-0' : 'justify-center p-8'}`}>
+    <main className={`min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#12121a] to-[#1a1a28] flex flex-col items-center ${isMobile ? 'justify-center p-0' : 'justify-center p-8'}`}>
       <div className={`flex flex-col items-center ${isMobile ? 'w-full h-full' : 'gap-8'}`}>
         {isMobile ? (
           <>
-            {/* Mobile: Header at top, game at bottom */}
+            {/* Mobile: Header at top, game centered vertically */}
             <header className="absolute top-0 left-0 right-0 text-center py-3 px-4 z-10">
               <h1 className="font-black tracking-tight text-white text-3xl mb-1">
                 Balance — DEMO
@@ -22,8 +22,8 @@ export default function Home() {
               </p>
             </header>
 
-            {/* Game container anchored to bottom */}
-            <div className="relative w-full mt-auto">
+            {/* Game container centered vertically */}
+            <div className="relative w-full">
               <GameContainer isMobile={isMobile} />
               <GameUI isMobile={isMobile} />
             </div>
