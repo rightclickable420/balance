@@ -13,11 +13,11 @@ export default function Home() {
         {isMobile ? (
           <>
             {/* Mobile: Header at top, game centered vertically */}
-            <header className="absolute top-0 left-0 right-0 text-center py-3 px-4 z-10">
-              <h1 className="font-black tracking-tight text-white text-3xl mb-1">
+            <header className="absolute top-0 left-0 right-0 text-center py-2 px-4 z-10">
+              <h1 className="font-black tracking-tight text-white text-2xl mb-0.5">
                 Balance — DEMO
               </h1>
-              <p className="text-gray-400 text-xs font-medium">
+              <p className="text-gray-400 text-[10px] font-medium">
                 tap to flip · swipe to discard
               </p>
             </header>

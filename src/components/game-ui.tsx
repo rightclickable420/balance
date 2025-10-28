@@ -137,19 +137,19 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     return (
       <div className="pointer-events-none">
         {/* Top Bar - Account Info */}
-        <div className="absolute top-16 left-0 right-0 bg-gradient-to-b from-black/90 to-transparent backdrop-blur-sm px-5 py-5 z-20">
+        <div className="absolute top-16 left-0 right-0 bg-gradient-to-b from-black/90 to-transparent backdrop-blur-sm px-4 py-3 z-20">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
               <div className="flex flex-col">
-                <div className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Balance</div>
-                <div className="text-4xl font-black text-white tabular-nums leading-none mt-1.5">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Balance</div>
+                <div className="text-2xl font-black text-white tabular-nums leading-none mt-0.5">
                   ${balance.toFixed(0)}
                 </div>
               </div>
-              <div className="h-14 w-px bg-white/20" />
+              <div className="h-10 w-px bg-white/20" />
               <div className="flex flex-col">
-                <div className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Equity</div>
-                <div className={`text-4xl font-black tabular-nums leading-none mt-1.5 ${
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Equity</div>
+                <div className={`text-2xl font-black tabular-nums leading-none mt-0.5 ${
                   equity <= 0 ? 'text-rose-500' :
                   equity < balance * 0.2 ? 'text-rose-400' :
                   equity < balance * 0.5 ? 'text-amber-400' :
@@ -161,7 +161,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
             </div>
 
             {phase === "hovering" && (
-              <div className={`text-5xl font-black tracking-tight ${stanceAccent[hoverStance]}`}>
+              <div className={`text-3xl font-black tracking-tight ${stanceAccent[hoverStance]}`}>
                 {stanceLabels[hoverStance]}
               </div>
             )}
@@ -170,11 +170,11 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
 
         {/* Vertically Centered Side Panel - Market Indicators */}
         {latestFeatures && (
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 bg-black/75 backdrop-blur-lg rounded-2xl p-5 border border-white/20 shadow-2xl">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-2.5 bg-black/75 backdrop-blur-lg rounded-xl p-3 border border-white/20 shadow-2xl">
             {/* Market Direction */}
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Market</div>
-              <div className={`text-3xl font-black ${
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">Market</div>
+              <div className={`text-xl font-black ${
                 latestFeatures.momentum > 0.1 ? 'text-emerald-400' :
                 latestFeatures.momentum < -0.1 ? 'text-rose-400' :
                 'text-amber-400'
@@ -192,11 +192,11 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
               const value = latestFeatures[key]
               const color = variant === "signed" ? signedColor(value) : magnitudeColor(value)
               return (
-                <div key={key} className="flex flex-col items-center gap-2">
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">{label}</div>
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-4 w-4 rounded-full shadow-lg" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
-                    <div className="text-base font-black tabular-nums" style={{ color }}>{value.toFixed(2)}</div>
+                <div key={key} className="flex flex-col items-center gap-1">
+                  <div className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">{label}</div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2.5 w-2.5 rounded-full shadow-lg" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+                    <div className="text-xs font-black tabular-nums" style={{ color }}>{value.toFixed(2)}</div>
                   </div>
                 </div>
               )
@@ -205,15 +205,15 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
             <div className="h-px w-full bg-white/20" />
 
             {/* Stability Indicator */}
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Stability</div>
-              <div className="w-full h-12 bg-white/10 rounded-full overflow-hidden relative">
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[9px] text-muted-foreground uppercase tracking-wider font-bold">Stability</div>
+              <div className="w-full h-8 bg-white/10 rounded-full overflow-hidden relative">
                 <div
                   className={`absolute bottom-0 w-full transition-all duration-200 ${phaseBar[energyPhase]}`}
                   style={{ height: `${clamp01(energyBudget) * 100}%` }}
                 />
               </div>
-              <div className={`text-sm font-black ${phaseAccent[energyPhase]}`}>
+              <div className={`text-[10px] font-black ${phaseAccent[energyPhase]}`}>
                 {phaseLabels[energyPhase]}
               </div>
             </div>
@@ -221,12 +221,12 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
         )}
 
         {/* Bottom Controls Panel */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/90 to-transparent backdrop-blur-lg px-6 py-6 pb-10 pointer-events-auto">
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/90 to-transparent backdrop-blur-lg px-5 py-4 pb-8 pointer-events-auto">
           {/* Leverage Control */}
-          <div className="flex flex-col gap-3 mb-5">
+          <div className="flex flex-col gap-2 mb-4">
             <div className="flex items-baseline justify-between">
-              <div className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Leverage</div>
-              <div className={`text-4xl font-black tabular-nums ${
+              <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Leverage</div>
+              <div className={`text-3xl font-black tabular-nums ${
                 leverage <= 5 ? 'text-emerald-400' :
                 leverage <= 10 ? 'text-amber-400' :
                 'text-rose-400'
@@ -241,17 +241,17 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
               step="0.5"
               value={leverage}
               onChange={(e) => setLeverage(parseFloat(e.target.value))}
-              className="w-full h-5 rounded-full appearance-none cursor-pointer bg-white/10
-                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-10 [&::-webkit-slider-thumb]:h-10
+              className="w-full h-4 rounded-full appearance-none cursor-pointer bg-white/10
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-8 [&::-webkit-slider-thumb]:h-8
                 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent
                 [&::-webkit-slider-thumb]:shadow-xl [&::-webkit-slider-thumb]:shadow-accent/50
-                [&::-moz-range-thumb]:w-10 [&::-moz-range-thumb]:h-10 [&::-moz-range-thumb]:rounded-full
+                [&::-moz-range-thumb]:w-8 [&::-moz-range-thumb]:h-8 [&::-moz-range-thumb]:rounded-full
                 [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-0
                 [&::-moz-range-thumb]:shadow-xl [&::-moz-range-thumb]:shadow-accent/50"
             />
-            <div className="flex justify-between text-xs text-muted-foreground uppercase font-bold">
+            <div className="flex justify-between text-[10px] text-muted-foreground uppercase font-bold">
               <span>1x Safe</span>
-              <span className={leverage > 10 ? 'text-rose-400 font-black text-sm' : ''}>
+              <span className={leverage > 10 ? 'text-rose-400 font-black text-xs' : ''}>
                 {leverage > 10 ? '⚠ High Risk' : '20x Max'}
               </span>
             </div>
@@ -260,14 +260,14 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
           {/* Alignment Info */}
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Alignment</div>
-              <div className={`text-xl font-black ${alignmentTone}`}>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Alignment</div>
+              <div className={`text-lg font-black ${alignmentTone}`}>
                 {alignmentLabel} {alignmentScore.toFixed(2)}
               </div>
             </div>
             <div className="flex flex-col items-end">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Data Source</div>
-              <div className="text-base font-black text-accent uppercase">{providerDisplay}</div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Data Source</div>
+              <div className="text-sm font-black text-accent uppercase">{providerDisplay}</div>
             </div>
           </div>
         </div>
@@ -275,11 +275,11 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
         {/* Liquidation Overlay */}
         {isLiquidated && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/90 backdrop-blur-md pointer-events-none z-50">
-            <div className="flex flex-col items-center gap-4 px-4 text-center">
-              <div className="text-6xl font-black text-rose-500 uppercase tracking-widest animate-pulse">
+            <div className="flex flex-col items-center gap-3 px-4 text-center">
+              <div className="text-4xl font-black text-rose-500 uppercase tracking-widest animate-pulse">
                 LIQUIDATED
               </div>
-              <div className="text-xl text-rose-400 uppercase tracking-wider">
+              <div className="text-base text-rose-400 uppercase tracking-wider">
                 Account Balance: $0.00
               </div>
             </div>
