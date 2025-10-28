@@ -245,8 +245,10 @@ const seatStoneOnSupport = (
   const topAngleInAnchor = -(anchor.metrics.topAngle ?? 0)
   const bottomAngleInAnchor = -(anchor.metrics.bottomAngle ?? 0)
 
-  // Calculate body angle: align the BOTTOM face with support
-  // No additional rotation needed - the geometry itself is already alternating
+  // Calculate body angle to align the stone's BOTTOM face with the support's TOP face
+  // Formula: We want the stone's bottom face (in world coords) to equal support.angle
+  // World bottom angle = body.angle + anchorRotation + bottomFaceAngle
+  // So: body.angle = support.angle - anchorRotation - bottomFaceAngle
   const bottomFaceAngle = bottomAngleInAnchor
   const targetBodyAngle = normalizeAngle(support.angle - anchorRotation - bottomFaceAngle)
 
@@ -255,7 +257,6 @@ const seatStoneOnSupport = (
   stone.isFlipped = isFlipped
 
   // Calculate and store the exact top angle to prevent drift accumulation
-  // The geometry alternates, so just use the top face angle directly
   const topFaceAngle = topAngleInAnchor
   const exactTopAngle = normalizeAngle(targetBodyAngle + anchorRotation + topFaceAngle)
   stone.topAngle = exactTopAngle
@@ -300,9 +301,11 @@ export function GameContainer() {
   const stackOrientationRef = useRef<StackOrientation>(DEFAULT_STACK_ORIENTATION)
   const supportFrameRef = useRef<StackOrientation>(DEFAULT_STACK_ORIENTATION)
   const topStoneRef = useRef<Stone | null>(null)
+  const totalStonesCreatedRef = useRef(0) // Track total stones ever created for alternating pattern
   const stackTopYRef = useRef(GROUND_Y)
   const stackSurfaceYRef = useRef(GROUND_Y)
   const towerOffsetTargetRef = useRef(0)
+  const towerOffsetXTargetRef = useRef(0)
   const towerOffsetInitializedRef = useRef(false)
   const hoverTransitionRef = useRef<{
     start: HoverStone
@@ -353,6 +356,7 @@ export function GameContainer() {
     setEnergyState,
     setPhysicsActive,
     setTowerOffset,
+    setTowerOffsetX,
     timeScale,
     setDataProvider,
     incrementStonesPlaced,
@@ -394,11 +398,24 @@ export function GameContainer() {
     const top = stackTopYRef.current
     const desiredOffset = DESIRED_TOP_SCREEN_Y - top
     towerOffsetTargetRef.current = desiredOffset
+
+    // Calculate horizontal offset to center the top stone
+    const topStone = topStoneRef.current
+    const centerX = CANVAS_WIDTH / 2 // 400
+    if (topStone) {
+      const topStoneX = topStone.body.position.x
+      const desiredOffsetX = centerX - topStoneX
+      towerOffsetXTargetRef.current = desiredOffsetX
+      if (!towerOffsetInitializedRef.current) {
+        setTowerOffsetX(desiredOffsetX)
+      }
+    }
+
     if (!towerOffsetInitializedRef.current) {
       setTowerOffset(desiredOffset)
       towerOffsetInitializedRef.current = true
     }
-  }, [setTowerOffset])
+  }, [setTowerOffset, setTowerOffsetX])
 
   const updateStackReferences = useCallback(
     (stone: Stone | null) => {
@@ -475,6 +492,9 @@ export function GameContainer() {
     const hover = hoverStoneRef.current
     if (!hover || !engineRef.current) return
 
+    // Clear any pending drop timer to prevent double-drops
+    clearDropTimer()
+
     // Don't place stones during active loss events to prevent gaps
     // Just skip this placement - the next scheduled drop will handle it
     if (lossEventActiveRef.current) {
@@ -510,7 +530,7 @@ export function GameContainer() {
     setPlacementProgress(0)
     setCanDecide(false)
     setDecisionProgress(0)
-  }, [setCanDecide, setDecisionProgress, setDropStartTime, setHoverStone, setPhase, setPlacementProgress, setPlacingStone])
+  }, [clearDropTimer, setCanDecide, setDecisionProgress, setDropStartTime, setHoverStone, setPhase, setPlacementProgress, setPlacingStone])
 
   const armNextDrop = useCallback(() => {
     if (phase !== "hovering") {
@@ -581,11 +601,13 @@ export function GameContainer() {
     })
 
     const localVertices = trapezoid.local
-    const { baseOrientation: longBase } = resolveBaseOrientation(prevTopAngle, visual.geometry.beta - support.angle * 0.6)
-    const longAngle = normalizeAngle(longBase - trapezoid.metrics.bottomAngleLocal)
-    const shortAngle = normalizeAngle(longAngle + Math.PI)
-    const { baseOrientation: flatBase } = resolveBaseOrientation(prevTopAngle, 0)
-    const flatAngle = normalizeAngle(flatBase - trapezoid.metrics.bottomAngleLocal)
+    // Since betaGlobal is already set to prevTopAngle, the bottom face is correct at 0 rotation
+    // Long: no rotation (bottom face aligns with support)
+    // Short: 180° rotation (flip the stone)
+    // Flat: no rotation with different positioning
+    const longAngle = 0
+    const shortAngle = Math.PI
+    const flatAngle = 0
 
     const hoverInitialStance = hoverStance ?? DEFAULT_STANCE
     const initialAngle = hoverInitialStance === "short" ? shortAngle : hoverInitialStance === "flat" ? flatAngle : longAngle
@@ -798,12 +820,31 @@ export function GameContainer() {
           const stonesToAdd = MIN_STACK_COUNT - newStoneCount
           console.log(`[Loss Event] Regenerating ${stonesToAdd} stones at bottom to maintain minimum stack`)
 
-          // Build a new support from ground up matching initial tower pattern
+          // Calculate how much to shift existing stones up
+          // Each stone is INITIAL_HEIGHT tall
+          const INITIAL_HEIGHT = 48
+          const shiftAmount = stonesToAdd * INITIAL_HEIGHT
+
+          // Shift all existing stones up to make room at bottom
+          const existingStones = engine.getStones()
+          for (const stone of existingStones) {
+            Matter.Body.setPosition(stone.body, {
+              x: stone.body.position.x,
+              y: stone.body.position.y - shiftAmount
+            })
+          }
+
+          // Build new stones from ground up matching initial tower pattern
           let support: StackOrientation = DEFAULT_STACK_ORIENTATION
 
           for (let i = 0; i < stonesToAdd; i++) {
+            // CRITICAL: Use the global counter to continue the alternating pattern
+            // This ensures each regenerated stone has the correct orientation
+            // regardless of how many stones were lost in previous events
+            const absoluteIndex = totalStonesCreatedRef.current
+
             // Regenerated stones should match initial tower - don't use candle data
-            const stance: Stance = i % 2 === 0 ? "long" : "short"
+            const stance: Stance = absoluteIndex % 2 === 0 ? "long" : "short"
             const { visual } = consumeNextCandleVisual(stance)
 
             // Fixed dimensions matching initial tower
@@ -813,21 +854,13 @@ export function GameContainer() {
 
             const angle = 0.1745 // 10 degrees (same as initial tower)
 
-            // Special case: first stone must have flat bottom (0°) to sit on horizontal floor
-            const isFlipped = (i % 2 === 1)
-            let betaGlobal, tauGlobal
-
-            if (i === 0) {
-              // First stone: flat bottom (0°), angled top (+10°) to match next stone's bottom
-              betaGlobal = 0
-              tauGlobal = angle
-            } else {
-              // Alternate the trapezoid angles to create interlocking pattern
-              // Even stones: -10° bottom, +10° top (wide on right)
-              // Odd stones: +10° bottom, -10° top (wide on left)
-              betaGlobal = isFlipped ? angle : -angle
-              tauGlobal = isFlipped ? -angle : angle
-            }
+            // Use the same pattern as initial tower generation
+            // Alternate the trapezoid angles to create interlocking pattern
+            // Even stones: -10° bottom, +10° top (wide on right)
+            // Odd stones: +10° bottom, -10° top (wide on left)
+            const isFlipped = (absoluteIndex % 2 === 1)
+            const betaGlobal = isFlipped ? angle : -angle
+            const tauGlobal = isFlipped ? -angle : angle
 
             const trapezoid = makeTrapezoidFromAngles({
               widthBottom: INITIAL_WIDTH,
@@ -840,12 +873,13 @@ export function GameContainer() {
               segments: 5,
             })
 
-            // Use the trapezoid as-is, no rotation needed
+            // Rotate flipped stones by 180° to alternate orientation
             const localVertices = trapezoid.local
-            const vertices = localVertices
+            const rotationAngle = isFlipped ? Math.PI : 0
+            const vertices = orientVertices(localVertices, rotationAngle)
 
-            // Calculate metrics without rotation
-            const metricsWorld = deriveWorldMetrics(trapezoid.metrics, 0)
+            // Calculate metrics with rotation
+            const metricsWorld = deriveWorldMetrics(trapezoid.metrics, rotationAngle)
             const topAngle = normalizeAngle(metricsWorld.topAngle)
 
             const stone = engine.addStone({
@@ -863,6 +897,8 @@ export function GameContainer() {
             // Use the isFlipped flag we already computed above
             seatStoneOnSupport(stone, support, isFlipped)
             Matter.Sleeping.set(stone.body, true)
+
+            totalStonesCreatedRef.current++ // Increment counter after creating each stone
             support = deriveSupportFrame(stone)
           }
 
@@ -1071,12 +1107,14 @@ export function GameContainer() {
 
     const prepopulateStack = () => {
       accountState.reset()
+      totalStonesCreatedRef.current = 0 // Reset counter at start
       let support = DEFAULT_STACK_ORIENTATION
       for (let i = 0; i < INITIAL_STACK_COUNT; i++) {
         // Alternate orientation to create angled initial tower with matching faces
         // Initial tower stones should be consistent - don't use candle data
         // We only consume candle visuals to get colors for alternating long/short
-        const stance: Stance = i % 2 === 0 ? "long" : "short"
+        const absoluteIndex = totalStonesCreatedRef.current
+        const stance: Stance = absoluteIndex % 2 === 0 ? "long" : "short"
         const { visual } = consumeNextCandleVisual(stance)
 
         // Fixed dimensions for initial tower stones
@@ -1087,17 +1125,17 @@ export function GameContainer() {
         // 10° angle in radians (~0.1745)
         const angle = 0.1745 // 10 degrees
 
-        // Special case: first stone must have flat bottom (0°) to sit on horizontal floor
-        // Then alternate the rest
-        const isFlipped = (i % 2 === 1)
+        // Alternate the trapezoid angles to create interlocking pattern
+        const isFlipped = (absoluteIndex % 2 === 1)
         let betaGlobal, tauGlobal
 
-        if (i === 0) {
-          // First stone: flat bottom (0°), angled top (+10°) to match next stone's bottom
+        if (absoluteIndex === 0) {
+          // First stone: 0° bottom (flat to sit on horizontal floor), +10° top
+          // This allows it to sit flat while continuing the alternating pattern
           betaGlobal = 0
           tauGlobal = angle
         } else {
-          // Alternate the trapezoid angles to create interlocking pattern
+          // All other stones alternate:
           // Even stones: -10° bottom, +10° top (wide on right)
           // Odd stones: +10° bottom, -10° top (wide on left)
           betaGlobal = isFlipped ? angle : -angle
@@ -1115,7 +1153,7 @@ export function GameContainer() {
           segments: 5,
         })
 
-        // Use the trapezoid as-is, no rotation needed
+        // Use the trapezoid as-is (initial tower was already working)
         const localVertices = trapezoid.local
         const vertices = localVertices
 
@@ -1139,6 +1177,7 @@ export function GameContainer() {
         seatStoneOnSupport(stone, support, isFlipped)
         Matter.Sleeping.set(stone.body, true)
 
+        totalStonesCreatedRef.current++ // Increment counter after creating each stone
         support = deriveSupportFrame(stone)
 
         // Log the support point drift to verify tower is building straight
@@ -1218,7 +1257,7 @@ export function GameContainer() {
         }
       }
 
-      // Smooth tower offset animation
+      // Smooth tower offset animation (vertical)
       const currentOffset = state.towerOffset
       const targetOffset = towerOffsetTargetRef.current
       if (Math.abs(targetOffset - currentOffset) > 0.5) {
@@ -1227,6 +1266,17 @@ export function GameContainer() {
         setTowerOffset(newOffset)
       } else if (targetOffset !== currentOffset) {
         setTowerOffset(targetOffset)
+      }
+
+      // Smooth tower offset animation (horizontal)
+      const currentOffsetX = state.towerOffsetX
+      const targetOffsetX = towerOffsetXTargetRef.current
+      if (Math.abs(targetOffsetX - currentOffsetX) > 0.5) {
+        const easingSpeed = 0.08
+        const newOffsetX = currentOffsetX + (targetOffsetX - currentOffsetX) * easingSpeed
+        setTowerOffsetX(newOffsetX)
+      } else if (targetOffsetX !== currentOffsetX) {
+        setTowerOffsetX(targetOffsetX)
       }
 
       // Force frequent renders when physics is active for smooth tumbling animation

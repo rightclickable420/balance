@@ -83,7 +83,7 @@ export function GameCanvas({
   disturberStrength = 0,
 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { towerOffset, debugMode } = useGameState()
+  const { towerOffset, towerOffsetX, debugMode } = useGameState()
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -96,7 +96,7 @@ export function GameCanvas({
     ctx.clearRect(0, 0, width, height)
 
     ctx.save()
-    ctx.translate(0, towerOffset)
+    ctx.translate(towerOffsetX, towerOffset)
 
     // Get stones from physics engine
     const stones: Stone[] = engineRef.current?.getStones() ?? []
@@ -411,6 +411,7 @@ export function GameCanvas({
     decisionProgress,
     placingStone,
     towerOffset,
+    towerOffsetX,
     energyPhase,
     energyRatio,
     stabilizerStrength,

@@ -62,7 +62,11 @@ const featureDescriptors: Array<{ key: keyof Features; label: string; variant: "
   { key: "regime", label: "Reg", variant: "magnitude" },
 ]
 
-export function GameUI() {
+interface GameUIProps {
+  isMobile?: boolean
+}
+
+export function GameUI({ isMobile = false }: GameUIProps = {}) {
   const {
     stonesPlaced,
     canDecide,
@@ -124,6 +128,104 @@ export function GameUI() {
   const alignmentTone = alignmentScore >= 0 ? "text-emerald-300" : "text-rose-300"
   const alignmentLabel = alignmentScore >= 0 ? "Favorable" : "Against"
 
+  if (isMobile) {
+    // Mobile-optimized compact layout
+    return (
+      <div className="pointer-events-none">
+        {/* Compact Top Bar */}
+        <div className="absolute top-0 left-0 right-0 h-14 flex items-center justify-between px-3 bg-gradient-to-b from-black/70 to-transparent backdrop-blur-sm border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col">
+              <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Balance</div>
+              <div className="text-lg font-black text-white tabular-nums leading-none mt-0.5">
+                ${balance.toFixed(0)}
+              </div>
+            </div>
+            <div className="h-8 w-px bg-white/10" />
+            <div className="flex flex-col">
+              <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Equity</div>
+              <div className={`text-lg font-black tabular-nums leading-none mt-0.5 ${
+                equity <= 0 ? 'text-rose-500 animate-pulse' :
+                equity < balance * 0.2 ? 'text-rose-400' :
+                equity < balance * 0.5 ? 'text-amber-400' :
+                'text-white'
+              }`}>
+                ${equity.toFixed(0)}
+              </div>
+            </div>
+          </div>
+
+          {phase === "hovering" && (
+            <div className="flex flex-col items-end">
+              <div className={`text-2xl font-black tracking-tight leading-none ${stanceAccent[hoverStance]}`}>
+                {stanceLabels[hoverStance]}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Compact Bottom Bar */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent backdrop-blur-sm border-t border-white/5 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Stability</div>
+            <div className={`text-sm font-black ${phaseAccent[energyPhase]}`}>
+              {phaseLabels[energyPhase]}
+            </div>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden mb-3">
+            <div
+              className={`h-full rounded-full transition-all duration-200 ease-out ${phaseBar[energyPhase]}`}
+              style={{ width: `${clamp01(energyBudget) * 100}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Leverage</div>
+            <div className={`text-xl font-black tabular-nums ${
+              leverage <= 5 ? 'text-emerald-400' :
+              leverage <= 10 ? 'text-amber-400' :
+              'text-rose-400'
+            }`}>
+              {leverage.toFixed(1)}x
+            </div>
+          </div>
+          <input
+            type="range"
+            min="1"
+            max="20"
+            step="0.5"
+            value={leverage}
+            onChange={(e) => setLeverage(parseFloat(e.target.value))}
+            className="pointer-events-auto w-full h-2 rounded-full appearance-none cursor-pointer bg-white/10
+              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent
+              [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-accent/50
+              [&::-webkit-slider-thumb]:cursor-pointer
+              [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full
+              [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-0
+              [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:shadow-accent/50
+              [&::-moz-range-thumb]:cursor-pointer"
+          />
+        </div>
+
+        {/* Liquidation Overlay */}
+        {isLiquidated && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-none z-50">
+            <div className="flex flex-col items-center gap-4 px-4 text-center">
+              <div className="text-5xl font-black text-rose-500 uppercase tracking-widest animate-pulse">
+                LIQUIDATED
+              </div>
+              <div className="text-lg text-rose-400 uppercase tracking-wider">
+                Account Balance: $0.00
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Desktop layout
   return (
     <div className="pointer-events-none">
       {/* Top Bar - Account & Status */}
@@ -190,7 +292,7 @@ export function GameUI() {
 
       {/* Left Panel - Stability & Alignment */}
       <div className="absolute left-6 top-28 w-72">
-        <div className="bg-card/90 backdrop-blur-md rounded-xl border-2 border-border shadow-2xl p-5">
+        <div className="bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] p-5 hover:border-white/20 transition-all duration-300">
           <div className="flex items-baseline justify-between mb-3">
             <div className="text-xs text-muted-foreground uppercase tracking-widest font-bold">Stability</div>
             <div className={`text-2xl font-black tracking-tight ${phaseAccent[energyPhase]}`}>

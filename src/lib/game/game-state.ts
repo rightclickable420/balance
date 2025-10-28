@@ -16,6 +16,7 @@ export interface GameState {
   physicsActive: boolean
   marketAlignment: number // -1 to 1, oscillates over time
   towerOffset: number // Y offset for scrolling tower down
+  towerOffsetX: number // X offset for centering tower horizontally
 
   // Current stone
   currentCandle: Candle | null
@@ -54,6 +55,7 @@ export interface GameState {
   setPhysicsActive: (active: boolean) => void
   setMarketAlignment: (alignment: number) => void
   setTowerOffset: (offset: number) => void
+  setTowerOffsetX: (offsetX: number) => void
   setPlacementProgress: (progress: number) => void
   setDebugMode: (debug: boolean) => void
   setTimeScale: (scale: number) => void
@@ -76,6 +78,7 @@ export const useGameState = create<GameState>((set) => ({
   physicsActive: false,
   marketAlignment: 0,
   towerOffset: 0,
+  towerOffsetX: 0,
   currentCandle: null,
   currentStone: null,
   dropStartTime: null,
@@ -113,6 +116,7 @@ export const useGameState = create<GameState>((set) => ({
   setPhysicsActive: (physicsActive) => set({ physicsActive }),
   setMarketAlignment: (marketAlignment) => set({ marketAlignment }),
   setTowerOffset: (towerOffset) => set({ towerOffset }),
+  setTowerOffsetX: (towerOffsetX) => set({ towerOffsetX }),
   setPlacementProgress: (placementProgress) => set({ placementProgress }),
   setDebugMode: (debugMode) => set({ debugMode }),
   setTimeScale: (timeScale) => set({ timeScale }),
@@ -135,6 +139,7 @@ export const useGameState = create<GameState>((set) => ({
       physicsActive: false,
       marketAlignment: 0,
       towerOffset: 0,
+      towerOffsetX: 0,
       currentCandle: null,
       currentStone: null,
       dropStartTime: null,
