@@ -104,6 +104,9 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     }
   }, [stonesPlaced])
 
+  // Mobile settings state - must be at top level (React hooks rule)
+  const [showSettings, setShowSettings] = useState(false)
+
   const progressWidth = clamp01(decisionProgress)
   const providerDisplay = (() => {
     const normalized = dataProvider?.toLowerCase() ?? "mock"
@@ -130,7 +133,6 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
 
   if (isMobile) {
     // Mobile-optimized layout with vertical panel and slide-up sheet
-    const [showSettings, setShowSettings] = useState(false)
 
     return (
       <div className="pointer-events-none">
