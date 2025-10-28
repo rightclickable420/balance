@@ -137,19 +137,19 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     return (
       <div className="pointer-events-none">
         {/* Top Bar - Account Info */}
-        <div className="absolute top-20 left-0 right-0 bg-gradient-to-b from-black/90 to-transparent backdrop-blur-sm px-5 py-4 z-20">
+        <div className="absolute top-16 left-0 right-0 bg-gradient-to-b from-black/90 to-transparent backdrop-blur-sm px-5 py-5 z-20">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-6">
               <div className="flex flex-col">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Balance</div>
-                <div className="text-3xl font-black text-white tabular-nums leading-none mt-1">
+                <div className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Balance</div>
+                <div className="text-4xl font-black text-white tabular-nums leading-none mt-1.5">
                   ${balance.toFixed(0)}
                 </div>
               </div>
-              <div className="h-12 w-px bg-white/10" />
+              <div className="h-14 w-px bg-white/20" />
               <div className="flex flex-col">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Equity</div>
-                <div className={`text-3xl font-black tabular-nums leading-none mt-1 ${
+                <div className="text-sm text-muted-foreground uppercase tracking-wider font-bold">Equity</div>
+                <div className={`text-4xl font-black tabular-nums leading-none mt-1.5 ${
                   equity <= 0 ? 'text-rose-500' :
                   equity < balance * 0.2 ? 'text-rose-400' :
                   equity < balance * 0.5 ? 'text-amber-400' :
@@ -161,7 +161,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
             </div>
 
             {phase === "hovering" && (
-              <div className={`text-4xl font-black tracking-tight ${stanceAccent[hoverStance]}`}>
+              <div className={`text-5xl font-black tracking-tight ${stanceAccent[hoverStance]}`}>
                 {stanceLabels[hoverStance]}
               </div>
             )}

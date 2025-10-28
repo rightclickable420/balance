@@ -2,8 +2,11 @@ import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Balance Game",
-  description: "A physics-based stone stacking game",
+  title: "Balance — DEMO",
+  description: "A physics-based stone stacking trading game",
+  icons: {
+    icon: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({
