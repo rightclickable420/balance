@@ -170,7 +170,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
 
         {/* Vertically Centered Side Panel - Market Indicators */}
         {latestFeatures && (
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 bg-black/75 backdrop-blur-lg rounded-2xl p-5 border border-white/20 shadow-2xl">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 bg-black/75 backdrop-blur-lg rounded-2xl p-5 border border-white/20 shadow-2xl">
             {/* Market Direction */}
             <div className="flex flex-col items-center gap-2">
               <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Market</div>
