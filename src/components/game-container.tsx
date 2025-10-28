@@ -1543,16 +1543,19 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     // This allows the tower (which is centered) to be much larger vertically
     // The aspect ratio is 800:600 (4:3), but we'll scale it to fill more height
     // by making the width wider than the screen
+    const mobileScale = 250 // 250% width = 2.5x scaling = fills much more vertical space
+    const mobileMargin = (mobileScale - 100) / 2 // Center the oversized canvas
+
     return (
       <div ref={containerRef} className="relative touch-none w-full overflow-hidden">
         <div className="relative" style={{
-          // Make the canvas 150% of screen width to increase vertical size
+          // Make the canvas much wider to increase vertical size
           // This clips the left/right edges but keeps the center tower visible
-          width: '150%',
-          paddingBottom: `${(CANVAS_HEIGHT / CANVAS_WIDTH) * 150}%`,
+          width: `${mobileScale}%`,
+          paddingBottom: `${(CANVAS_HEIGHT / CANVAS_WIDTH) * mobileScale}%`,
           // Center the oversized canvas
-          marginLeft: '-25%',
-          marginRight: '-25%'
+          marginLeft: `-${mobileMargin}%`,
+          marginRight: `-${mobileMargin}%`
         }}>
           <div className="absolute inset-0">
             <GameCanvas
