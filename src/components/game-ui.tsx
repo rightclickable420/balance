@@ -132,7 +132,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
   const alignmentLabel = alignmentScore >= 0 ? "Favorable" : "Against"
 
   if (isMobile) {
-    // Mobile-optimized layout with vertical panel and slide-up sheet
+    // Mobile-optimized layout with expanded side panel and bottom controls
 
     return (
       <div className="pointer-events-none">
@@ -168,107 +168,109 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
           </div>
         </div>
 
-        {/* Vertical Side Panel - Market Indicators */}
+        {/* Expanded Vertical Side Panel - Market Indicators with Labels */}
         {latestFeatures && (
-          <div className="absolute right-2 top-16 flex flex-col gap-2 bg-black/60 backdrop-blur-sm rounded-lg p-2 border border-white/10">
+          <div className="absolute right-2 top-16 flex flex-col gap-3 bg-black/60 backdrop-blur-sm rounded-lg p-3 border border-white/10">
             {/* Market Direction */}
-            <div className={`text-xs font-black text-center ${
-              latestFeatures.momentum > 0.1 ? 'text-emerald-400' :
-              latestFeatures.momentum < -0.1 ? 'text-rose-400' :
-              'text-amber-400'
-            }`}>
-              {latestFeatures.momentum > 0.1 ? '↑' :
-               latestFeatures.momentum < -0.1 ? '↓' :
-               '→'}
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Market</div>
+              <div className={`text-base font-black ${
+                latestFeatures.momentum > 0.1 ? 'text-emerald-400' :
+                latestFeatures.momentum < -0.1 ? 'text-rose-400' :
+                'text-amber-400'
+              }`}>
+                {latestFeatures.momentum > 0.1 ? '↑' :
+                 latestFeatures.momentum < -0.1 ? '↓' :
+                 '→'}
+              </div>
             </div>
 
-            {/* Feature Dots */}
-            {featureDescriptors.map(({ key, variant }) => {
+            <div className="h-px w-full bg-white/10" />
+
+            {/* Feature Indicators with Labels */}
+            {featureDescriptors.map(({ key, label, variant }) => {
               const value = latestFeatures[key]
               const color = variant === "signed" ? signedColor(value) : magnitudeColor(value)
               return (
-                <div key={key} className="flex justify-center">
-                  <div className="h-2 w-2 rounded-full shadow-lg" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+                <div key={key} className="flex flex-col items-center gap-1">
+                  <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">{label}</div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2 w-2 rounded-full shadow-lg" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+                    <div className="text-[10px] font-black tabular-nums" style={{ color }}>{value.toFixed(2)}</div>
+                  </div>
                 </div>
               )
             })}
 
+            <div className="h-px w-full bg-white/10" />
+
             {/* Stability Indicator */}
-            <div className="mt-1 w-1 h-8 bg-white/10 rounded-full overflow-hidden relative">
-              <div
-                className={`absolute bottom-0 w-full transition-all duration-200 ${phaseBar[energyPhase]}`}
-                style={{ height: `${clamp01(energyBudget) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Settings Button - Bottom Right */}
-        <button
-          onClick={() => setShowSettings(!showSettings)}
-          className="pointer-events-auto absolute bottom-4 right-4 w-12 h-12 bg-black/60 backdrop-blur-sm rounded-full border border-white/20 flex items-center justify-center text-white hover:bg-black/80 transition-all active:scale-95"
-        >
-          <span className="text-lg">⚙️</span>
-        </button>
-
-        {/* Slide-up Settings Sheet */}
-        {showSettings && (
-          <div className="absolute inset-0 flex items-end justify-center pointer-events-auto z-40">
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
-            <div className="relative w-full bg-black/90 backdrop-blur-md rounded-t-3xl border-t border-white/20 p-4 pb-8 max-h-[50vh] overflow-y-auto">
-              {/* Leverage Control */}
-              <div className="mb-6">
-                <div className="flex items-baseline justify-between mb-3">
-                  <div className="text-sm text-muted-foreground uppercase tracking-wide font-bold">Leverage</div>
-                  <div className={`text-3xl font-black tabular-nums ${
-                    leverage <= 5 ? 'text-emerald-400' :
-                    leverage <= 10 ? 'text-amber-400' :
-                    'text-rose-400'
-                  }`}>
-                    {leverage.toFixed(1)}x
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="20"
-                  step="0.5"
-                  value={leverage}
-                  onChange={(e) => setLeverage(parseFloat(e.target.value))}
-                  className="w-full h-3 rounded-full appearance-none cursor-pointer bg-white/10
-                    [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6
-                    [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent
-                    [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-accent/50
-                    [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full
-                    [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-0
-                    [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:shadow-accent/50"
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Stability</div>
+              <div className="w-full h-8 bg-white/10 rounded-full overflow-hidden relative">
+                <div
+                  className={`absolute bottom-0 w-full transition-all duration-200 ${phaseBar[energyPhase]}`}
+                  style={{ height: `${clamp01(energyBudget) * 100}%` }}
                 />
-                <div className="flex justify-between text-[10px] text-muted-foreground uppercase mt-2">
-                  <span>1x Safe</span>
-                  <span className={leverage > 10 ? 'text-rose-400' : ''}>
-                    {leverage > 10 ? '⚠ High Risk' : '20x Max'}
-                  </span>
-                </div>
               </div>
-
-              {/* Detailed Stats */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col">
-                  <div className="text-[10px] text-muted-foreground uppercase">Stability</div>
-                  <div className={`text-lg font-black ${phaseAccent[energyPhase]}`}>
-                    {phaseLabels[energyPhase]}
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <div className="text-[10px] text-muted-foreground uppercase">Alignment</div>
-                  <div className={`text-lg font-black ${alignmentTone}`}>
-                    {alignmentScore.toFixed(2)}
-                  </div>
-                </div>
+              <div className={`text-[10px] font-black ${phaseAccent[energyPhase]}`}>
+                {phaseLabels[energyPhase]}
               </div>
             </div>
           </div>
         )}
+
+        {/* Bottom Controls Panel */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent backdrop-blur-sm px-4 py-4 pb-6 pointer-events-auto">
+          {/* Leverage Control */}
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="flex items-baseline justify-between">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-bold">Leverage</div>
+              <div className={`text-2xl font-black tabular-nums ${
+                leverage <= 5 ? 'text-emerald-400' :
+                leverage <= 10 ? 'text-amber-400' :
+                'text-rose-400'
+              }`}>
+                {leverage.toFixed(1)}x
+              </div>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="20"
+              step="0.5"
+              value={leverage}
+              onChange={(e) => setLeverage(parseFloat(e.target.value))}
+              className="w-full h-3 rounded-full appearance-none cursor-pointer bg-white/10
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent
+                [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-accent/50
+                [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full
+                [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-0
+                [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:shadow-accent/50"
+            />
+            <div className="flex justify-between text-[9px] text-muted-foreground uppercase">
+              <span>1x Safe</span>
+              <span className={leverage > 10 ? 'text-rose-400' : ''}>
+                {leverage > 10 ? '⚠ High Risk' : '20x Max'}
+              </span>
+            </div>
+          </div>
+
+          {/* Alignment Info */}
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Alignment</div>
+              <div className={`text-base font-black ${alignmentTone}`}>
+                {alignmentLabel} {alignmentScore.toFixed(2)}
+              </div>
+            </div>
+            <div className="flex flex-col items-end">
+              <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Data Source</div>
+              <div className="text-xs font-black text-accent uppercase">{providerDisplay}</div>
+            </div>
+          </div>
+        </div>
 
         {/* Liquidation Overlay */}
         {isLiquidated && (
