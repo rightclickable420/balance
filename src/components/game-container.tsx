@@ -1543,7 +1543,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     // This allows the tower (which is centered) to be much larger vertically
     // The aspect ratio is 800:600 (4:3), but we'll scale it to fill more height
     // by making the width wider than the screen
-    const mobileScale = 250 // 250% width = 2.5x scaling = fills much more vertical space
+    const mobileScale = 200 // 200% width = 2x scaling for balanced tower size
     const mobileMargin = (mobileScale - 100) / 2 // Center the oversized canvas
 
     return (
