@@ -287,7 +287,11 @@ const resolveBaseOrientation = (prevTopAngle: number, desiredOffset: number) => 
 
 const DEFAULT_STANCE: Stance = "long"
 
-export function GameContainer() {
+interface GameContainerProps {
+  isMobile?: boolean
+}
+
+export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
   const engineRef = useRef<PhysicsEngine | null>(null)
   const candleSourceRef = useRef(createCandleSource())
   const alignmentSampleRef = useRef<AlignmentSample>({
@@ -1532,26 +1536,50 @@ export function GameContainer() {
     }
   }, [phase, stonesPlaced, triggerLossEvent, hoverStance, equity, peakEquity, accountState])
 
-  return (
-    <div ref={containerRef} className="relative touch-none w-full max-w-[800px] mx-auto">
-      <div className="relative w-full" style={{ paddingBottom: `${(CANVAS_HEIGHT / CANVAS_WIDTH) * 100}%` }}>
-        <div className="absolute inset-0">
-          <GameCanvas
-            width={CANVAS_WIDTH}
-            height={CANVAS_HEIGHT}
-            engineRef={engineRef}
-            renderTrigger={renderTrigger}
-            hoverStone={hoverStoneState}
-            hoverCanDecide={canDecide}
-            decisionProgress={decisionProgress}
-            placingStone={placingStoneState}
-            energyPhase={energyPhase}
-            energyRatio={energyBudget}
-            stabilizerStrength={stabilizerStrength}
-            disturberStrength={disturberStrength}
-          />
+  // Mobile: responsive wrapper with aspect ratio
+  // Desktop: fixed size container
+  if (isMobile) {
+    return (
+      <div ref={containerRef} className="relative touch-none w-full max-w-[800px] mx-auto">
+        <div className="relative w-full" style={{ paddingBottom: `${(CANVAS_HEIGHT / CANVAS_WIDTH) * 100}%` }}>
+          <div className="absolute inset-0">
+            <GameCanvas
+              width={CANVAS_WIDTH}
+              height={CANVAS_HEIGHT}
+              engineRef={engineRef}
+              renderTrigger={renderTrigger}
+              hoverStone={hoverStoneState}
+              hoverCanDecide={canDecide}
+              decisionProgress={decisionProgress}
+              placingStone={placingStoneState}
+              energyPhase={energyPhase}
+              energyRatio={energyBudget}
+              stabilizerStrength={stabilizerStrength}
+              disturberStrength={disturberStrength}
+            />
+          </div>
         </div>
       </div>
+    )
+  }
+
+  // Desktop: fixed dimensions
+  return (
+    <div ref={containerRef} className="relative touch-none">
+      <GameCanvas
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
+        engineRef={engineRef}
+        renderTrigger={renderTrigger}
+        hoverStone={hoverStoneState}
+        hoverCanDecide={canDecide}
+        decisionProgress={decisionProgress}
+        placingStone={placingStoneState}
+        energyPhase={energyPhase}
+        energyRatio={energyBudget}
+        stabilizerStrength={stabilizerStrength}
+        disturberStrength={disturberStrength}
+      />
     </div>
   )
 }

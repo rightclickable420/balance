@@ -20,7 +20,7 @@ export default function Home() {
         </header>
 
         <div className={`relative ${isMobile ? 'w-full' : ''}`}>
-          <GameContainer />
+          <GameContainer isMobile={isMobile} />
           <GameUI isMobile={isMobile} />
         </div>
 
