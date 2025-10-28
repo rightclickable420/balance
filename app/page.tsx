@@ -8,18 +8,18 @@ export default function Home() {
   const isMobile = useIsMobile()
 
   return (
-    <main className={`min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#12121a] to-[#1a1a28] flex flex-col items-center ${isMobile ? 'justify-start pt-4' : 'justify-center'} ${isMobile ? 'p-2' : 'p-8'}`}>
-      <div className="flex flex-col items-center gap-4 md:gap-8">
-        <header className="text-center">
-          <h1 className={`font-bold tracking-tight text-white mb-2 ${isMobile ? 'text-2xl' : 'text-4xl'}`}>
+    <main className={`min-h-screen bg-gradient-to-b from-[#0a0a0f] via-[#12121a] to-[#1a1a28] flex flex-col items-center ${isMobile ? 'justify-start pt-0' : 'justify-center'} ${isMobile ? 'p-0' : 'p-8'}`}>
+      <div className={`flex flex-col items-center ${isMobile ? 'gap-1 w-full' : 'gap-8'}`}>
+        <header className={`text-center ${isMobile ? 'py-2 px-2' : ''}`}>
+          <h1 className={`font-bold tracking-tight text-white ${isMobile ? 'text-lg mb-0.5' : 'text-4xl mb-2'}`}>
             Balance — DEMO
           </h1>
-          <p className={`text-gray-400 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+          <p className={`text-gray-400 ${isMobile ? 'text-[10px]' : 'text-sm'}`}>
             {isMobile ? "tap to flip · swipe to discard" : "click to flip · swipe to discard · one stone per candle"}
           </p>
         </header>
 
-        <div className="relative">
+        <div className={`relative ${isMobile ? 'w-full' : ''}`}>
           <GameContainer />
           <GameUI isMobile={isMobile} />
         </div>

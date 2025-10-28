@@ -132,90 +132,118 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     // Mobile-optimized compact layout
     return (
       <div className="pointer-events-none">
-        {/* Compact Top Bar */}
-        <div className="absolute top-0 left-0 right-0 h-14 flex items-center justify-between px-3 bg-gradient-to-b from-black/70 to-transparent backdrop-blur-sm border-b border-white/5">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col">
-              <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Balance</div>
-              <div className="text-lg font-black text-white tabular-nums leading-none mt-0.5">
-                ${balance.toFixed(0)}
+        {/* Compact Top Bar - Account Info */}
+        <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/80 to-transparent backdrop-blur-sm border-b border-white/10 px-2 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-1">
+              <div className="flex flex-col min-w-0">
+                <div className="text-[7px] text-muted-foreground uppercase tracking-wide font-bold">Balance</div>
+                <div className="text-sm font-black text-white tabular-nums leading-none">
+                  ${balance.toFixed(1)}
+                </div>
+              </div>
+              <div className="h-6 w-px bg-white/10" />
+              <div className="flex flex-col min-w-0">
+                <div className="text-[7px] text-muted-foreground uppercase tracking-wide font-bold">Equity</div>
+                <div className={`text-sm font-black tabular-nums leading-none ${
+                  equity <= 0 ? 'text-rose-500' :
+                  equity < balance * 0.2 ? 'text-rose-400' :
+                  equity < balance * 0.5 ? 'text-amber-400' :
+                  'text-white'
+                }`}>
+                  ${equity.toFixed(1)}
+                </div>
               </div>
             </div>
-            <div className="h-8 w-px bg-white/10" />
-            <div className="flex flex-col">
-              <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Equity</div>
-              <div className={`text-lg font-black tabular-nums leading-none mt-0.5 ${
-                equity <= 0 ? 'text-rose-500 animate-pulse' :
-                equity < balance * 0.2 ? 'text-rose-400' :
-                equity < balance * 0.5 ? 'text-amber-400' :
-                'text-white'
+
+            {phase === "hovering" && (
+              <div className={`text-xl font-black tracking-tight ${stanceAccent[hoverStance]} px-2`}>
+                {stanceLabels[hoverStance]}
+              </div>
+            )}
+
+            <div className="flex flex-col items-end min-w-0">
+              <div className="text-[7px] text-muted-foreground uppercase tracking-wide font-bold">Lev</div>
+              <div className={`text-sm font-black tabular-nums leading-none ${
+                leverage <= 5 ? 'text-emerald-400' :
+                leverage <= 10 ? 'text-amber-400' :
+                'text-rose-400'
               }`}>
-                ${equity.toFixed(0)}
+                {leverage.toFixed(1)}x
               </div>
             </div>
           </div>
 
-          {phase === "hovering" && (
-            <div className="flex flex-col items-end">
-              <div className={`text-2xl font-black tracking-tight leading-none ${stanceAccent[hoverStance]}`}>
-                {stanceLabels[hoverStance]}
+          {/* Leverage Slider - directly under top bar */}
+          <div className="mt-2">
+            <input
+              type="range"
+              min="1"
+              max="20"
+              step="0.5"
+              value={leverage}
+              onChange={(e) => setLeverage(parseFloat(e.target.value))}
+              className="pointer-events-auto w-full h-1.5 rounded-full appearance-none cursor-pointer bg-white/10
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent
+                [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-accent/50
+                [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full
+                [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-0
+                [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:shadow-accent/50"
+            />
+          </div>
+        </div>
+
+        {/* Compact Bottom Bar - Stability & Market */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent backdrop-blur-sm border-t border-white/10 px-2 py-2">
+          {/* Stability Bar */}
+          <div className="mb-2">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[7px] text-muted-foreground uppercase tracking-wide font-bold">Stability</div>
+              <div className={`text-xs font-black ${phaseAccent[energyPhase]}`}>
+                {phaseLabels[energyPhase]}
+              </div>
+            </div>
+            <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-200 ease-out ${phaseBar[energyPhase]}`}
+                style={{ width: `${clamp01(energyBudget) * 100}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Market Info & Alignment */}
+          {latestFeatures && (
+            <div className="flex items-center justify-between text-[10px]">
+              <div className="flex items-center gap-2">
+                <div className={`font-black ${
+                  latestFeatures.momentum > 0.1 ? 'text-emerald-400' :
+                  latestFeatures.momentum < -0.1 ? 'text-rose-400' :
+                  'text-amber-400'
+                }`}>
+                  {latestFeatures.momentum > 0.1 ? '↑ BULL' :
+                   latestFeatures.momentum < -0.1 ? '↓ BEAR' :
+                   '→ NEUT'}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground text-[7px] uppercase">Align</span>
+                <span className={`font-black ${alignmentTone}`}>
+                  {alignmentScore.toFixed(1)}
+                </span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Compact Bottom Bar */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent backdrop-blur-sm border-t border-white/5 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Stability</div>
-            <div className={`text-sm font-black ${phaseAccent[energyPhase]}`}>
-              {phaseLabels[energyPhase]}
-            </div>
-          </div>
-          <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden mb-3">
-            <div
-              className={`h-full rounded-full transition-all duration-200 ease-out ${phaseBar[energyPhase]}`}
-              style={{ width: `${clamp01(energyBudget) * 100}%` }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Leverage</div>
-            <div className={`text-xl font-black tabular-nums ${
-              leverage <= 5 ? 'text-emerald-400' :
-              leverage <= 10 ? 'text-amber-400' :
-              'text-rose-400'
-            }`}>
-              {leverage.toFixed(1)}x
-            </div>
-          </div>
-          <input
-            type="range"
-            min="1"
-            max="20"
-            step="0.5"
-            value={leverage}
-            onChange={(e) => setLeverage(parseFloat(e.target.value))}
-            className="pointer-events-auto w-full h-2 rounded-full appearance-none cursor-pointer bg-white/10
-              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
-              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent
-              [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-accent/50
-              [&::-webkit-slider-thumb]:cursor-pointer
-              [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full
-              [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-0
-              [&::-moz-range-thumb]:shadow-lg [&::-moz-range-thumb]:shadow-accent/50
-              [&::-moz-range-thumb]:cursor-pointer"
-          />
-        </div>
-
         {/* Liquidation Overlay */}
         {isLiquidated && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-none z-50">
-            <div className="flex flex-col items-center gap-4 px-4 text-center">
-              <div className="text-5xl font-black text-rose-500 uppercase tracking-widest animate-pulse">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/90 backdrop-blur-md pointer-events-none z-50">
+            <div className="flex flex-col items-center gap-3 px-4 text-center">
+              <div className="text-4xl font-black text-rose-500 uppercase tracking-widest animate-pulse">
                 LIQUIDATED
               </div>
-              <div className="text-lg text-rose-400 uppercase tracking-wider">
+              <div className="text-sm text-rose-400 uppercase tracking-wider">
                 Account Balance: $0.00
               </div>
             </div>
