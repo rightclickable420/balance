@@ -1547,7 +1547,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     const mobileMargin = (mobileScale - 100) / 2 // Center the oversized canvas
 
     return (
-      <div ref={containerRef} className="relative touch-none w-full overflow-hidden pt-16">
+      <div ref={containerRef} className="relative touch-none w-full overflow-hidden pt-12">
         <div className="relative" style={{
           // Make the canvas much wider to increase vertical size
           // This clips the left/right edges but keeps the center tower visible
