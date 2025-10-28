@@ -7,19 +7,17 @@ export function useIsMobile() {
 
   useEffect(() => {
     const checkMobile = () => {
-      // Check if screen width is mobile-sized
+      // Primary check: screen width
       const isSmallScreen = window.innerWidth < 768
 
-      // Check if device has touch capability
-      const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0
-
-      // Check user agent for mobile devices
+      // Secondary check: user agent for mobile devices
       const userAgent = navigator.userAgent.toLowerCase()
       const isMobileUA =
         /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent)
 
-      // Consider it mobile if it has a small screen OR is a touch device with mobile UA
-      setIsMobile(isSmallScreen || (hasTouch && isMobileUA))
+      // Only consider it mobile if screen is small OR has mobile user agent
+      // This prevents touchscreen laptops from being detected as mobile
+      setIsMobile(isSmallScreen || isMobileUA)
     }
 
     checkMobile()
