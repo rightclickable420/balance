@@ -419,5 +419,5 @@ export function GameCanvas({
     debugMode,
   ])
 
-  return <canvas ref={canvasRef} width={width} height={height} className="block" />
+  return <canvas ref={canvasRef} width={width} height={height} className="block w-full h-full" />
 }

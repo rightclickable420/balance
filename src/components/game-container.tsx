@@ -1533,21 +1533,25 @@ export function GameContainer() {
   }, [phase, stonesPlaced, triggerLossEvent, hoverStance, equity, peakEquity, accountState])
 
   return (
-    <div ref={containerRef} className="relative touch-none">
-      <GameCanvas
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
-        engineRef={engineRef}
-        renderTrigger={renderTrigger}
-        hoverStone={hoverStoneState}
-        hoverCanDecide={canDecide}
-        decisionProgress={decisionProgress}
-        placingStone={placingStoneState}
-        energyPhase={energyPhase}
-        energyRatio={energyBudget}
-        stabilizerStrength={stabilizerStrength}
-        disturberStrength={disturberStrength}
-      />
+    <div ref={containerRef} className="relative touch-none w-full max-w-[800px] mx-auto">
+      <div className="relative w-full" style={{ paddingBottom: `${(CANVAS_HEIGHT / CANVAS_WIDTH) * 100}%` }}>
+        <div className="absolute inset-0">
+          <GameCanvas
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            engineRef={engineRef}
+            renderTrigger={renderTrigger}
+            hoverStone={hoverStoneState}
+            hoverCanDecide={canDecide}
+            decisionProgress={decisionProgress}
+            placingStone={placingStoneState}
+            energyPhase={energyPhase}
+            energyRatio={energyBudget}
+            stabilizerStrength={stabilizerStrength}
+            disturberStrength={disturberStrength}
+          />
+        </div>
+      </div>
     </div>
   )
 }
