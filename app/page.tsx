@@ -12,17 +12,7 @@ export default function Home() {
       <div className={`flex flex-col items-center ${isMobile ? 'w-full h-full' : 'gap-8'}`}>
         {isMobile ? (
           <>
-            {/* Mobile: Header at top, game centered vertically */}
-            <header className="absolute top-0 left-0 right-0 text-center py-2 px-4 z-10">
-              <h1 className="font-black tracking-tight text-white text-2xl mb-0.5">
-                Balance — DEMO
-              </h1>
-              <p className="text-gray-400 text-[10px] font-medium">
-                tap to flip · swipe to discard
-              </p>
-            </header>
-
-            {/* Game container centered vertically */}
+            {/* Mobile: No header, game centered vertically */}
             <div className="relative w-full">
               <GameContainer isMobile={isMobile} />
               <GameUI isMobile={isMobile} />

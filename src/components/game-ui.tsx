@@ -137,7 +137,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     return (
       <div className="pointer-events-none">
         {/* Top Bar - Account Info */}
-        <div className="absolute top-16 left-0 right-0 bg-gradient-to-b from-black/90 to-transparent backdrop-blur-sm px-4 py-3 z-20">
+        <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/90 to-transparent backdrop-blur-sm px-4 py-3 z-20">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex flex-col">
