@@ -459,6 +459,30 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
               </span>
             </div>
           </div>
+
+          <div className="h-px w-full bg-white/10 my-4" />
+
+          {/* Auto-Align Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-widest font-bold">Auto-Align</div>
+              <div className={`text-[10px] font-bold ${autoAlign ? 'text-emerald-400' : 'text-gray-500'}`}>
+                {autoAlign ? 'ON' : 'OFF'}
+              </div>
+            </div>
+            <button
+              onClick={() => setAutoAlign(!autoAlign)}
+              className={`pointer-events-auto relative w-14 h-7 rounded-full transition-colors ${
+                autoAlign ? 'bg-emerald-500' : 'bg-gray-600'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-lg transition-transform ${
+                  autoAlign ? 'translate-x-7' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
         </div>
       </div>
 

@@ -245,10 +245,8 @@ const seatStoneOnSupport = (
   const topAngleInAnchor = -(anchor.metrics.topAngle ?? 0)
   const bottomAngleInAnchor = -(anchor.metrics.bottomAngle ?? 0)
 
-  // Calculate body angle to align the stone's BOTTOM face with the support's TOP face
-  // Formula: We want the stone's bottom face (in world coords) to equal support.angle
-  // World bottom angle = body.angle + anchorRotation + bottomFaceAngle
-  // So: body.angle = support.angle - anchorRotation - bottomFaceAngle
+  // Calculate approximate body angle to align the stone's BOTTOM face with the support's TOP face
+  // This gives us a good starting position for physics-based settling
   const bottomFaceAngle = bottomAngleInAnchor
   const targetBodyAngle = normalizeAngle(support.angle - anchorRotation - bottomFaceAngle)
 
@@ -256,15 +254,11 @@ const seatStoneOnSupport = (
   Matter.Body.setAngularVelocity(stone.body, 0)
   stone.isFlipped = isFlipped
 
-  // Calculate and store the exact top angle to prevent drift accumulation
-  const topFaceAngle = topAngleInAnchor
-  const exactTopAngle = normalizeAngle(targetBodyAngle + anchorRotation + topFaceAngle)
-  stone.topAngle = exactTopAngle
-
-  // Now position the body so the bottom center sits on the support point
+  // Position the body slightly ABOVE the support point (5px) to allow physics to settle it
+  // Extra height ensures corner contacts have room to rotate into full face contact
   const bottomCenter = computeAnchoredWorldPoint(anchor, stone.body, { x: 0, y: 0 })
   const deltaX = support.supportPoint.x - bottomCenter.x
-  const deltaY = support.supportPoint.y - bottomCenter.y
+  const deltaY = support.supportPoint.y - bottomCenter.y - 5 // 5px above for settling
 
   if (Math.abs(deltaX) > 1e-5 || Math.abs(deltaY) > 1e-5) {
     Matter.Body.setPosition(stone.body, {
@@ -276,6 +270,116 @@ const seatStoneOnSupport = (
   Matter.Body.setVelocity(stone.body, { x: 0, y: 0 })
   Matter.Body.setAngularVelocity(stone.body, 0)
   stone.supportTargetX = support.supportPoint.x
+
+  // Store the top face angle for reference (will be recalculated after physics settling)
+  const topFaceAngle = topAngleInAnchor
+  const exactTopAngle = normalizeAngle(targetBodyAngle + anchorRotation + topFaceAngle)
+  stone.topAngle = exactTopAngle
+}
+
+// Physics-based stone settling: let gravity naturally seat the stone
+const settleStoneWithPhysics = (
+  stone: Stone,
+  engine: PhysicsEngine,
+  setPhysicsActive: (active: boolean) => void,
+  onComplete: () => void
+) => {
+  // Set high friction to prevent sliding and low restitution to prevent bouncing
+  const originalFriction = stone.body.friction
+  const originalRestitution = stone.body.restitution
+  const originalFrictionAir = stone.body.frictionAir
+
+  // High friction prevents sliding, zero restitution prevents any bouncing
+  stone.body.friction = 0.98
+  stone.body.restitution = 0 // Zero restitution - no bouncing at all
+  // Reduce air resistance to allow rotation from corner contacts
+  stone.body.frictionAir = 0.001
+
+  // Make stone dynamic and ACTIVATE PHYSICS to allow the engine to update
+  engine.setStoneStatic(stone, false)
+  Matter.Sleeping.set(stone.body, false)
+  setPhysicsActive(true) // CRITICAL: Enable physics engine updates
+
+  const SETTLE_TIMEOUT = 300 // ms - extended timeout to ensure full contact
+  const VELOCITY_THRESHOLD = 0.01 // Much lower - only freeze when truly still
+  const ANGULAR_VELOCITY_THRESHOLD = 0.005 // Much lower angular velocity
+  const MIN_SETTLE_TIME = 80 // ms - minimum time before we can freeze (ensures contact)
+  const STABLE_FRAMES_REQUIRED = 3 // Must be stable for multiple frames
+  const startTime = Date.now()
+  let stableFrameCount = 0
+
+  const checkSettled = () => {
+    const velocity = stone.body.velocity
+    const angularVelocity = stone.body.angularVelocity
+    const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y)
+    const elapsed = Date.now() - startTime
+
+    // Don't check until minimum settle time has passed
+    if (elapsed < MIN_SETTLE_TIME) {
+      requestAnimationFrame(checkSettled)
+      return
+    }
+
+    // Check if velocity is low enough
+    if (speed < VELOCITY_THRESHOLD && Math.abs(angularVelocity) < ANGULAR_VELOCITY_THRESHOLD) {
+      stableFrameCount++
+
+      // Require multiple consecutive stable frames to prevent premature freezing
+      if (stableFrameCount >= STABLE_FRAMES_REQUIRED) {
+        // Stone has settled naturally
+        finalizeStonePosition(stone, engine, originalFriction, originalRestitution, originalFrictionAir)
+        setPhysicsActive(false) // Deactivate physics after settling
+        onComplete()
+      } else {
+        // Keep checking
+        requestAnimationFrame(checkSettled)
+      }
+    } else {
+      // Reset stable count if stone is still moving
+      stableFrameCount = 0
+
+      if (elapsed > SETTLE_TIMEOUT) {
+        // Timeout: force finalization
+        finalizeStonePosition(stone, engine, originalFriction, originalRestitution, originalFrictionAir)
+        setPhysicsActive(false) // Deactivate physics after settling
+        onComplete()
+      } else {
+        // Continue checking
+        requestAnimationFrame(checkSettled)
+      }
+    }
+  }
+
+  // Start monitoring
+  requestAnimationFrame(checkSettled)
+}
+
+const finalizeStonePosition = (
+  stone: Stone,
+  engine: PhysicsEngine,
+  originalFriction: number,
+  originalRestitution: number,
+  originalFrictionAir: number
+) => {
+  // Freeze stone in place
+  Matter.Body.setVelocity(stone.body, { x: 0, y: 0 })
+  Matter.Body.setAngularVelocity(stone.body, 0)
+
+  // Restore original physics properties
+  stone.body.friction = originalFriction
+  stone.body.restitution = originalRestitution
+  stone.body.frictionAir = originalFrictionAir
+
+  // Make stone static again
+  engine.setStoneStatic(stone, true)
+  Matter.Sleeping.set(stone.body, true)
+
+  // Recalculate top angle based on final settled position
+  if (stone.anchor) {
+    const anchorRotation = -(stone.anchor.transform.rotation ?? 0)
+    const topAngleInAnchor = -(stone.anchor.metrics.topAngle ?? 0)
+    stone.topAngle = normalizeAngle(stone.body.angle + anchorRotation + topAngleInAnchor)
+  }
 }
 
 const resolveBaseOrientation = (prevTopAngle: number, desiredOffset: number) => {
@@ -693,6 +797,10 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     const engine = engineRef.current
     if (!placing || !engine) return
 
+    // IMPORTANT: Clear the ref immediately to prevent duplicate calls
+    placingStoneRef.current = null
+    setPlacingStone(null)
+
     // Record when this stone was placed for loss event timing
     lastStonePlacementTimeRef.current = Date.now()
 
@@ -717,21 +825,23 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     const isFlipped = placing.stance === "short"
     engine.setStoneStatic(addedStone, true)
     seatStoneOnSupport(addedStone, supportFrame, isFlipped)
-    Matter.Sleeping.set(addedStone.body, true)
 
-    updateStackReferences(addedStone)
-    stackSurfaceYRef.current = supportFrame.supportPoint.y
+    // Use physics to naturally settle the stone into its perfect position
+    settleStoneWithPhysics(addedStone, engine, setPhysicsActive, () => {
+      // After physics settling completes, finalize everything
+      updateStackReferences(addedStone)
+      stackSurfaceYRef.current = supportFrame.supportPoint.y
 
-    setPlacingStone(null)
-    placingStoneRef.current = null
-    incrementStonesPlaced()
-    setPhase("stable")
-    setPlacementProgress(1)
-    prepareHoverStone()
+      incrementStonesPlaced()
+      setPhase("stable")
+      setPlacementProgress(1)
+      prepareHoverStone()
+    })
   }, [
     incrementStonesPlaced,
     prepareHoverStone,
     setPhase,
+    setPhysicsActive,
     setPlacementProgress,
     setPlacingStone,
     updateStackReferences,
