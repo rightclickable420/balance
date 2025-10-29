@@ -1330,12 +1330,15 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
       const elapsed = now - hoverModulationTimerRef.current
 
       if (elapsed >= MODULATION_INTERVAL && hover.updatesApplied < hover.maxUpdates) {
-        // Check if auto-align is enabled and automatically flip stance based on momentum
         const accountState = useAccountState.getState()
         let targetStance = hover.stance
 
-        if (accountState.autoAlign && lastFeaturesRef.current) {
-          const momentum = lastFeaturesRef.current.momentum
+        // First, get the new candle data with the current stance
+        const { candle, evaluation, visual } = consumeNextCandleVisual(hover.stance)
+
+        // Check if auto-align is enabled and automatically flip stance based on NEW momentum
+        if (accountState.autoAlign) {
+          const momentum = evaluation.features.momentum
           // Auto-align: flip to long if momentum > 0.1, short if < -0.1
           if (momentum > 0.1) {
             targetStance = "long"
@@ -1350,7 +1353,6 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
           }
         }
 
-        const { candle, evaluation, visual } = consumeNextCandleVisual(targetStance)
         setLatestFeatures(evaluation.features)
 
         // Update alignment with new features and current stance
