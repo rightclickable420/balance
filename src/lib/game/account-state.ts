@@ -33,6 +33,9 @@ interface AccountState {
   // Leverage settings
   leverage: number
   isLiquidated: boolean
+  // Auto-align mode
+  autoAlign: boolean
+  setAutoAlign: (enabled: boolean) => void
   setLeverage: (leverage: number) => void
   seedPrice: (price: number) => void
   registerCandle: (candle: Candle, stance: Stance) => number
@@ -57,6 +60,12 @@ export const useAccountState = create<AccountState>((set, get) => ({
   currentPositionStance: "flat",
   leverage: 1, // Default 1x leverage (no leverage)
   isLiquidated: false,
+  autoAlign: false, // Default off
+
+  setAutoAlign: (enabled) => {
+    set({ autoAlign: enabled })
+    console.log(`[Auto-Align] ${enabled ? 'Enabled' : 'Disabled'}`)
+  },
 
   setLeverage: (leverage) => {
     const clampedLeverage = clampNumber(leverage, 1, 20) // Allow 1x to 20x

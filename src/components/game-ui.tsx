@@ -86,6 +86,8 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
   const equity = useAccountState((state) => state.equity)
   const leverage = useAccountState((state) => state.leverage)
   const setLeverage = useAccountState((state) => state.setLeverage)
+  const autoAlign = useAccountState((state) => state.autoAlign)
+  const setAutoAlign = useAccountState((state) => state.setAutoAlign)
   const isLiquidated = useAccountState((state) => state.isLiquidated)
 
   console.log(
@@ -222,6 +224,28 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
 
         {/* Bottom Controls Panel */}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/90 to-transparent backdrop-blur-lg px-5 py-4 pb-8 pointer-events-auto">
+          {/* Auto-Align Toggle */}
+          <div className="flex items-center justify-between mb-3 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider font-bold">Auto-Align</div>
+              <div className={`text-[10px] font-bold ${autoAlign ? 'text-emerald-400' : 'text-gray-500'}`}>
+                {autoAlign ? 'ON' : 'OFF'}
+              </div>
+            </div>
+            <button
+              onClick={() => setAutoAlign(!autoAlign)}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                autoAlign ? 'bg-emerald-500' : 'bg-gray-600'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-lg transition-transform ${
+                  autoAlign ? 'translate-x-6' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
           {/* Leverage Control */}
           <div className="flex flex-col gap-2 mb-4">
             <div className="flex items-baseline justify-between">

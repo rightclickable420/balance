@@ -1330,17 +1330,37 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
       const elapsed = now - hoverModulationTimerRef.current
 
       if (elapsed >= MODULATION_INTERVAL && hover.updatesApplied < hover.maxUpdates) {
-        const { candle, evaluation, visual } = consumeNextCandleVisual(hover.stance)
+        // Check if auto-align is enabled and automatically flip stance based on momentum
+        const accountState = useAccountState.getState()
+        let targetStance = hover.stance
+
+        if (accountState.autoAlign && lastFeaturesRef.current) {
+          const momentum = lastFeaturesRef.current.momentum
+          // Auto-align: flip to long if momentum > 0.1, short if < -0.1
+          if (momentum > 0.1) {
+            targetStance = "long"
+          } else if (momentum < -0.1) {
+            targetStance = "short"
+          }
+
+          // If stance changed due to auto-align, update it
+          if (targetStance !== hover.stance) {
+            setHoverStance(targetStance)
+            console.log(`[Auto-Align] Flipped stance to ${targetStance} (momentum: ${momentum.toFixed(2)})`)
+          }
+        }
+
+        const { candle, evaluation, visual } = consumeNextCandleVisual(targetStance)
         setLatestFeatures(evaluation.features)
 
         // Update alignment with new features and current stance
         lastFeaturesRef.current = evaluation.features
-        applyAlignmentSample(evaluation.features, hover.stance)
+        applyAlignmentSample(evaluation.features, targetStance)
         updateForceIndicators(alignmentSampleRef.current.score)
 
         // Update unrealized P&L with the latest price and current stance
         if (candle && Number.isFinite(candle.close)) {
-          accountState.updateUnrealizedPnl(candle.close, hover.stance)
+          accountState.updateUnrealizedPnl(candle.close, targetStance)
         }
 
         if (!hoverTransitionRef.current) {
