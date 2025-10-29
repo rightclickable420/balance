@@ -1387,7 +1387,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
           const { baseOrientation: flatBase } = resolveBaseOrientation(prevTopAngle, 0)
           const flatAngle = normalizeAngle(flatBase - trapezoid.metrics.bottomAngleLocal)
 
-          const targetStance = hover.stance
+          // Use the targetStance from auto-align logic above (not hover.stance)
           const targetAngle =
             targetStance === "short" ? shortAngle : targetStance === "flat" ? flatAngle : longAngle
 
@@ -1403,6 +1403,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
 
           const targetHover: HoverStone = {
             ...hover,
+            stance: targetStance, // Use auto-aligned stance
             localVertices: trapezoid.local,
             vertices: targetVertices,
             metricsLocal: trapezoid.metrics,
