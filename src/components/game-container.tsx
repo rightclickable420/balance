@@ -18,7 +18,7 @@ import { useGameState, type Stance } from "@/lib/game/game-state"
 import { useAccountState } from "@/lib/game/account-state"
 import { initFeatureState, computeFeatures, type Features } from "@/lib/data/features"
 import { featuresToStoneVisual, type StoneGeometryInput } from "@/lib/game/feature-mapper"
-import { computeRawAlignment, updateAlignment, type AlignmentSample } from "@/lib/game/alignment"
+import { computeRawAlignment, computeMarketDirection, computeMarketConviction, updateAlignment, type AlignmentSample } from "@/lib/game/alignment"
 import type { Candle, StoneParams } from "@/lib/types"
 import { createCandleSource } from "@/lib/data/candle-source-factory"
 import { stonesToLoseFromDrawdown, calculateLossSeverity } from "@/lib/game/loss"
@@ -43,8 +43,6 @@ const normalizeAngle = (angle: number): number => {
   if (result < -Math.PI) result += Math.PI * 2
   return result
 }
-
-const clampDirectionalOffset = (offset: number) => clamp(offset, -Math.PI / 6, Math.PI / 6)
 
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2)
 
@@ -380,13 +378,6 @@ const finalizeStonePosition = (
     const topAngleInAnchor = -(stone.anchor.metrics.topAngle ?? 0)
     stone.topAngle = normalizeAngle(stone.body.angle + anchorRotation + topAngleInAnchor)
   }
-}
-
-const resolveBaseOrientation = (prevTopAngle: number, desiredOffset: number) => {
-  const clampedOffset = clampDirectionalOffset(desiredOffset)
-  const baseOrientation = normalizeAngle(prevTopAngle + clampedOffset)
-  const appliedOffset = normalizeAngle(baseOrientation - prevTopAngle)
-  return { baseOrientation, appliedOffset }
 }
 
 const DEFAULT_STANCE: Stance = "long"
@@ -1446,20 +1437,36 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
         // First, get the new candle data with the current stance
         const { candle, evaluation, visual } = consumeNextCandleVisual(hover.stance)
 
-        // Check if auto-align is enabled and automatically flip stance based on NEW momentum
+        // Calculate market direction for both auto-align and tower lean compensation
+        const marketDirection = computeMarketDirection(evaluation.features)
+        const conviction = computeMarketConviction(evaluation.features)
+
+        // Check if auto-align is enabled and automatically flip stance based on comprehensive market direction
         if (accountState.autoAlign) {
-          const momentum = evaluation.features.momentum
-          // Auto-align: flip to long if momentum > 0.1, short if < -0.1
-          if (momentum > 0.1) {
+
+          // Three-way decision based on direction and conviction:
+          // 1. Strong bullish signal → long
+          // 2. Strong bearish signal → short
+          // 3. Low conviction (unclear/choppy) → flat
+
+          // Low conviction threshold: if below 0.4, market is too unclear to take a position
+          if (conviction < 0.4) {
+            targetStance = "flat"
+          } else if (marketDirection > 0.15) {
+            // Bullish with sufficient conviction
             targetStance = "long"
-          } else if (momentum < -0.1) {
+          } else if (marketDirection < -0.15) {
+            // Bearish with sufficient conviction
             targetStance = "short"
+          } else {
+            // Weak signal (between -0.15 and 0.15) even with conviction → stay flat
+            targetStance = "flat"
           }
 
           // If stance changed due to auto-align, update it
           if (targetStance !== hover.stance) {
             setHoverStance(targetStance)
-            console.log(`[Auto-Align] Flipped stance to ${targetStance} (momentum: ${momentum.toFixed(2)})`)
+            console.log(`[Auto-Align] Flipped stance to ${targetStance} (direction: ${marketDirection.toFixed(3)}, conviction: ${conviction.toFixed(3)}, momentum: ${evaluation.features.momentum.toFixed(2)}, order: ${evaluation.features.orderImbalance.toFixed(2)}, volume: ${evaluation.features.volume.toFixed(2)}, volatility: ${evaluation.features.volatility.toFixed(2)})`)
           }
         }
 
@@ -1475,31 +1482,139 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
           accountState.updateUnrealizedPnl(candle.close, targetStance)
         }
 
+        // Calculate tower lean by finding the actual high point of the tower
+        // This must be done on EVERY update since stone shape changes every second
+        // We need to check which side (left or right) of the top stone is higher
+        const topStone = topStoneRef.current
+        let towerLean = 0
+
+        if (topStone && topStone.body && topStone.body.vertices && topStone.body.vertices.length > 0) {
+          // Get all vertices of the top stone
+          const vertices = topStone.body.vertices
+
+          // Find the center X position of the stone
+          const centerX = topStone.body.position.x
+
+          // Split vertices into left and right halves
+          // Find the HIGHEST point (lowest Y value) on each side
+          let leftHighestY = Infinity   // Highest point on left (lowest Y value)
+          let rightHighestY = Infinity  // Highest point on right (lowest Y value)
+
+          for (const v of vertices) {
+            if (v.x < centerX) {
+              // Left side - find highest (lowest Y)
+              if (v.y < leftHighestY) {
+                leftHighestY = v.y
+              }
+            } else {
+              // Right side - find highest (lowest Y)
+              if (v.y < rightHighestY) {
+                rightHighestY = v.y
+              }
+            }
+          }
+
+          // Tower lean = difference in Y position (higher = lower Y value in screen coords)
+          // If left side is higher (lower Y), leftHighestY < rightHighestY, so difference is negative
+          // We want positive towerLean when left is high, so: rightHighestY - leftHighestY
+          // If left high: leftY < rightY → rightY - leftY = positive
+          // If right high: rightY < leftY → rightY - leftY = negative
+          towerLean = rightHighestY - leftHighestY
+        }
+
+        // STONE SHAPE COMPENSATION FOR TOWER LEAN
+        // This must be recalculated on EVERY update since market direction changes every second
+        //
+        // Key insight: The stone SHAPE should ONLY depend on tower lean, NOT market direction
+        // Market direction only determines which stance (LONG/SHORT) is aligned
+        //
+        // Tower high on LEFT (towerLean > 0):
+        //   - Aligned stance (whatever it is) needs fat on RIGHT to compensate
+        //   - Misaligned stance (whatever it is) should have fat on LEFT to reinforce
+        //
+        // Tower high on RIGHT (towerLean < 0):
+        //   - Aligned stance needs fat on LEFT to compensate
+        //   - Misaligned stance should have fat on RIGHT to reinforce
+        //
+        // The market from visual.geometry creates beta:
+        //   - Bullish: beta > 0 (fat LEFT)
+        //   - Bearish: beta < 0 (fat RIGHT)
+        //
+        // We need to adjust this so that BOTH long and short can compensate when aligned:
+        //
+        // Example: Tower high LEFT (need fat RIGHT when aligned)
+        //   - Market bullish: beta > 0 (fat LEFT) → INVERT to beta < 0 (fat RIGHT)
+        //     - LONG aligned (0°): fat RIGHT ✅ compensates
+        //     - SHORT misaligned (180°): fat flips to LEFT ✅ reinforces
+        //   - Market bearish: beta < 0 (fat RIGHT) → KEEP as-is
+        //     - SHORT aligned (180°): fat flips to LEFT... wait, that's wrong!
+        //
+        // Actually, I need to think about this differently. When SHORT rotates 180°:
+        // - Geometry beta > 0 (fat LEFT) → after 180° → fat RIGHT
+        // - Geometry beta < 0 (fat RIGHT) → after 180° → fat LEFT
+        //
+        // So for tower high LEFT (need fat RIGHT when aligned):
+        //   - LONG aligned (0°, no flip): geometry needs beta < 0 (fat RIGHT directly)
+        //   - SHORT aligned (180°, flip): geometry needs beta > 0 (fat LEFT → flips to RIGHT)
+        //
+        // Simplified: For tower high LEFT, ALWAYS invert. For tower high RIGHT, NEVER invert.
+        const shouldInvertGeometry = towerLean > 0
+
+        // Adjust the stone geometry to account for tower lean
+        const adjustedGeometry = shouldInvertGeometry
+          ? {
+              ...visual.geometry,
+              beta: -visual.geometry.beta,  // Invert beta
+              tau: -visual.geometry.tau,    // Invert tau
+            }
+          : visual.geometry
+
+        // Debug logging - ALWAYS log for now to debug (only on client with valid data)
+        if (typeof window !== 'undefined' && visual?.geometry?.beta !== undefined) {
+          console.log('[Tower Compensation]', {
+            towerLean: towerLean.toFixed(3),
+            highSide: towerLean > 0 ? 'LEFT' : towerLean < 0 ? 'RIGHT' : 'NONE',
+            marketDirection: marketDirection.toFixed(3),
+            marketType: marketDirection > 0.15 ? 'BULLISH' : marketDirection < -0.15 ? 'BEARISH' : 'NEUTRAL',
+            originalBeta: visual.geometry.beta.toFixed(3),
+            originalFatSide: visual.geometry.beta > 0 ? 'LEFT' : visual.geometry.beta < 0 ? 'RIGHT' : 'NONE',
+            adjustedBeta: adjustedGeometry.beta.toFixed(3),
+            adjustedFatSide: adjustedGeometry.beta > 0 ? 'LEFT' : adjustedGeometry.beta < 0 ? 'RIGHT' : 'NONE',
+            inverted: shouldInvertGeometry,
+            targetStance,
+            stanceRotation: targetStance === 'long' ? '0°' : targetStance === 'short' ? '180°' : 'current',
+            finalFatSideAfterRotation: targetStance === 'long'
+              ? (adjustedGeometry.beta > 0 ? 'LEFT' : 'RIGHT')
+              : targetStance === 'short'
+              ? (adjustedGeometry.beta > 0 ? 'RIGHT' : 'LEFT')  // Flipped by 180°
+              : 'varies'
+          })
+        }
+
         if (!hoverTransitionRef.current) {
           const support = stackOrientationRef.current
           const prevTopAngle = support.angle
 
+          // Create trapezoid with the adjusted geometry
           const trapezoid = makeTrapezoidFromAngles({
-            widthBottom: visual.geometry.widthBottom,
-            height: visual.geometry.height,
-            taper: visual.geometry.taper,
-            round: visual.geometry.round,
-            betaGlobal: prevTopAngle + visual.geometry.beta,
-            tauGlobal: prevTopAngle + visual.geometry.tau,
+            widthBottom: adjustedGeometry.widthBottom,
+            height: adjustedGeometry.height,
+            taper: adjustedGeometry.taper,
+            round: adjustedGeometry.round,
+            betaGlobal: prevTopAngle + adjustedGeometry.beta,
+            tauGlobal: prevTopAngle + adjustedGeometry.tau,
             prevTopAngleGlobal: prevTopAngle,
             segments: 5,
           })
 
-          const { baseOrientation: longBase } = resolveBaseOrientation(
-            prevTopAngle,
-            visual.geometry.beta - support.angle * 0.6,
-          )
-          const longAngle = normalizeAngle(longBase - trapezoid.metrics.bottomAngleLocal)
-          const shortAngle = normalizeAngle(longAngle + Math.PI)
-          const { baseOrientation: flatBase } = resolveBaseOrientation(prevTopAngle, 0)
-          const flatAngle = normalizeAngle(flatBase - trapezoid.metrics.bottomAngleLocal)
+          // Now stones NEVER flip for compensation - only for stance changes (long ↔ short)
+          // Long stance: 0° (no flip)
+          // Short stance: 180° (flip)
+          // Flat stance: maintains previous angle
+          const longAngle = 0
+          const shortAngle = Math.PI
+          const flatAngle = hover.angle
 
-          // Use the targetStance from auto-align logic above (not hover.stance)
           const targetAngle =
             targetStance === "short" ? shortAngle : targetStance === "flat" ? flatAngle : longAngle
 
@@ -1521,7 +1636,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
             metricsLocal: trapezoid.metrics,
             anchored: trapezoid.anchored,
             metricsWorld: targetMetricsWorld,
-            geometry: visual.geometry,
+            geometry: adjustedGeometry,  // Use adjusted geometry that accounts for tower lean
             strength: visual.strength,
             angle: targetAngle,
             angleLong: longAngle,

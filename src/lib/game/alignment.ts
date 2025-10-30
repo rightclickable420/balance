@@ -25,18 +25,99 @@ export interface AlignmentSample {
   timestamp: number
 }
 
+/**
+ * Compute comprehensive market direction signal
+ * Combines trend strength, volume confirmation, and volatility adjustment
+ * Returns value from -1 (bearish) to 1 (bullish)
+ */
+export const computeMarketDirection = (features: Features): number => {
+  // Trend Strength: Multi-candle bias weighted more than single-candle momentum
+  // orderImbalance = persistent directional bias (most important)
+  // momentum = current candle direction
+  // breadth = candle quality (body vs wick ratio)
+  const trendStrength = clamp(
+    features.orderImbalance * 0.5 +
+    features.momentum * 0.3 +
+    features.breadth * 0.2,
+    -1,
+    1
+  )
+
+  // Volume Confirmation: High volume confirms the move, low volume weakens it
+  // volume > 0.5 → multiplier > 1.0 (strengthens signal)
+  // volume < 0.5 → multiplier < 1.0 (weakens signal)
+  const volumeConfirmation = 0.7 + features.volume * 0.6 // Range: 0.7 to 1.3
+
+  // Volatility Penalty: High volatility makes signals less reliable
+  // volatility = 0 → no penalty (1.0)
+  // volatility = 1 → max penalty (0.7)
+  const volatilityPenalty = 1.0 - clamp(features.volatility, 0, 1) * 0.3
+
+  // Combined market direction with confirmations and adjustments
+  const marketDirection = trendStrength * volumeConfirmation * volatilityPenalty
+
+  return clamp(marketDirection, -1, 1)
+}
+
+/**
+ * Compute market conviction - how confident are we in any directional signal?
+ * Low conviction = unclear/choppy market → should go flat
+ * Returns value from 0 (no conviction) to 1 (high conviction)
+ */
+export const computeMarketConviction = (features: Features): number => {
+  // Strong conviction when:
+  // 1. Clear directional signals (high momentum/order imbalance)
+  // 2. High volume (market participants agree)
+  // 3. Low volatility (stable conditions, not choppy)
+  // 4. Good breadth (clean candles, not wicky/indecisive)
+
+  const directionalClarity = (Math.abs(features.momentum) * 0.4 + Math.abs(features.orderImbalance) * 0.4) / 0.8
+  const volumeConviction = features.volume
+  const stabilityFactor = 1.0 - clamp(features.volatility, 0, 1)
+  const candleQuality = Math.abs(features.breadth) // High breadth = strong bodies
+
+  const conviction = clamp(
+    directionalClarity * 0.4 +
+    volumeConviction * 0.3 +
+    stabilityFactor * 0.2 +
+    candleQuality * 0.1,
+    0,
+    1
+  )
+
+  return conviction
+}
+
+/**
+ * Compute alignment score between market direction and stance
+ * Positive = stance aligned with market (good)
+ * Negative = stance against market (risky)
+ */
 export const computeRawAlignment = (features: Features, stance: Stance): number => {
-  const directionSignal = clamp(features.momentum * 0.6 + features.orderImbalance * 0.3 + features.breadth * 0.1, -1, 1)
+  // Get comprehensive market direction
+  const marketDirection = computeMarketDirection(features)
+
+  // Confidence: How strong/clear are the signals?
+  // Higher confidence when:
+  // - Strong momentum/order imbalance (clear direction)
+  // - High regime (clear market state)
+  // - Low volatility (stable conditions)
+  // - High volume (conviction)
   const confidence = clamp(
-    Math.abs(features.momentum) * 0.4 +
+    Math.abs(features.momentum) * 0.3 +
       Math.abs(features.orderImbalance) * 0.3 +
-      Math.max(0, features.regime) * 0.2 +
+      features.volume * 0.2 +
+      Math.max(0, features.regime) * 0.1 +
       (1 - clamp(features.volatility, 0, 1)) * 0.1,
     0,
     1,
   )
+
+  // Calculate agreement between stance and market direction
   const stanceDir = stanceDirection(stance)
-  const agreement = stance === "flat" ? 0 : directionSignal * stanceDir
+  const agreement = stance === "flat" ? 0 : marketDirection * stanceDir
+
+  // Final alignment: agreement scaled by confidence
   return clamp(agreement * confidence, -1, 1)
 }
 
