@@ -537,14 +537,47 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     [syncTowerOffset],
   )
 
-  const peekCurrentCandleVisual = useCallback((stance: Stance = "flat") => {
-    const candle = candleSourceRef.current.peek()
+  // Track the forming 30-second candle
+  const formingCandleRef = useRef<Candle | null>(null)
+  const formingCandleTicksRef = useRef<number>(0)
+
+  const getNextTickAndUpdateFormingCandle = useCallback((stance: Stance = "flat") => {
+    // Get the next 1-second candle (tick)
+    const tick = candleSourceRef.current.next()
     const provider = candleSourceRef.current.getSource()
     setDataProvider(provider)
-    const evaluation = computeFeatures(featureStateRef.current, candle)
-    // Note: We don't update featureStateRef here during peek, only on consume
-    const visual = featuresToStoneVisual(evaluation.features, candle.timestamp, stance)
-    return { candle, evaluation, visual }
+
+    // Initialize or update the forming 30-second candle
+    if (!formingCandleRef.current || formingCandleTicksRef.current === 0) {
+      // Start a new forming candle with this tick's open price
+      formingCandleRef.current = {
+        timestamp: tick.timestamp,
+        open: tick.open,
+        high: tick.high,
+        low: tick.low,
+        close: tick.close,
+        volume: tick.volume,
+      }
+      formingCandleTicksRef.current = 1
+    } else {
+      // Update the forming candle with new tick data
+      formingCandleRef.current = {
+        ...formingCandleRef.current,
+        high: Math.max(formingCandleRef.current.high, tick.high),
+        low: Math.min(formingCandleRef.current.low, tick.low),
+        close: tick.close, // Most recent close
+        volume: formingCandleRef.current.volume + tick.volume,
+      }
+      formingCandleTicksRef.current++
+    }
+
+    // Use the tick data for features calculation (keeps stone responsive to each second)
+    const evaluation = computeFeatures(featureStateRef.current, tick)
+    featureStateRef.current = evaluation.state
+    lastFeaturesRef.current = evaluation.features
+    const visual = featuresToStoneVisual(evaluation.features, tick.timestamp, stance)
+
+    return { candle: formingCandleRef.current, tick, evaluation, visual }
   }, [setDataProvider])
 
   const consumeNextCandleVisual = useCallback((stance: Stance = "flat") => {
@@ -821,8 +854,11 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     // Register P&L with the FINAL stance (after user's decision)
     if (placing.candle) {
       accountState.registerCandle(placing.candle, placing.stance)
-      // Add completed candle to chart history
+      // Add completed 30-second candle to chart history
       addCandleToHistory(placing.candle)
+      // Reset the forming candle tracker for the next stone
+      formingCandleRef.current = null
+      formingCandleTicksRef.current = 0
     }
 
     // Precisely seat the stone on the support frame
@@ -1450,11 +1486,11 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
         const accountState = useAccountState.getState()
         let targetStance = hover.stance
 
-        // Peek at the current forming candle (don't consume it yet)
-        // This allows us to see the 30-second candle forming with 1-second updates
-        const { candle, evaluation, visual } = peekCurrentCandleVisual(hover.stance)
+        // Get next tick and update the forming 30-second candle
+        // This aggregates 1-second ticks into a forming 30-second candle
+        const { candle, evaluation, visual } = getNextTickAndUpdateFormingCandle(hover.stance)
 
-        // Update the current candle for the chart (shows the forming 30s candle)
+        // Update the current candle for the chart (shows the forming 30s candle with updated OHLC)
         updateCurrentCandle(candle)
 
         // Calculate market direction for both auto-align and tower lean compensation
@@ -1754,7 +1790,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
 
     const interval = setInterval(modulateHover, 16)
     return () => clearInterval(interval)
-  }, [phase, peekCurrentCandleVisual, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators, updateCurrentCandle])
+  }, [phase, getNextTickAndUpdateFormingCandle, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators, updateCurrentCandle])
 
   // Check for loss events based on equity drawdown (includes unrealized P&L)
   // Subscribe to equity changes from account state
