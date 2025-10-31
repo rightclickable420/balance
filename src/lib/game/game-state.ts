@@ -26,6 +26,9 @@ export interface GameState {
 
   placementProgress: number // 0-1, animation progress
 
+  // Chart data
+  candleHistory: Candle[] // Historical 30-second candles for chart display
+
   debugMode: boolean
   timeScale: number
   hoverStance: Stance
@@ -66,6 +69,8 @@ export interface GameState {
   setAlignmentScore: (score: number, velocity: number, timestamp: number) => void
   setEnergyState: (budget: number, phase: "calm" | "building" | "critical", cooldownUntil: number) => void
   setForceStrengths: (stabilizer: number, disturber: number, direction?: number) => void
+  addCandleToHistory: (candle: Candle) => void
+  updateCurrentCandle: (candle: Candle) => void
   reset: () => void
 }
 
@@ -84,6 +89,7 @@ export const useGameState = create<GameState>((set) => ({
   dropStartTime: null,
   canDecide: true,
   placementProgress: 0,
+  candleHistory: [],
   debugMode: false,
   timeScale: 1,
   hoverStance: "long",
@@ -130,6 +136,13 @@ export const useGameState = create<GameState>((set) => ({
     set({ energyBudget, energyPhase, energyCooldownUntil }),
   setForceStrengths: (stabilizerStrength, disturberStrength, disturberDirection = 0) =>
     set({ stabilizerStrength, disturberStrength, disturberDirection }),
+  addCandleToHistory: (candle) =>
+    set((state) => ({
+      candleHistory: [...state.candleHistory, candle].slice(-30), // Keep last 30 candles
+      currentCandle: candle,
+    })),
+  updateCurrentCandle: (candle) =>
+    set({ currentCandle: candle }),
   reset: () =>
     set({
       phase: "waiting",
@@ -145,6 +158,7 @@ export const useGameState = create<GameState>((set) => ({
       dropStartTime: null,
       canDecide: true,
       placementProgress: 0,
+      candleHistory: [],
       debugMode: false,
       timeScale: 1,
       hoverStance: "long",

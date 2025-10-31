@@ -466,6 +466,8 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     stabilizerStrength,
     disturberStrength,
     decisionProgress,
+    addCandleToHistory,
+    updateCurrentCandle,
   } = useGameState()
 
   const accountState = useAccountState()
@@ -809,6 +811,8 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     // Register P&L with the FINAL stance (after user's decision)
     if (placing.candle) {
       accountState.registerCandle(placing.candle, placing.stance)
+      // Add completed candle to chart history
+      addCandleToHistory(placing.candle)
     }
 
     // Precisely seat the stone on the support frame
@@ -836,6 +840,8 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     setPlacementProgress,
     setPlacingStone,
     updateStackReferences,
+    accountState,
+    addCandleToHistory,
   ])
 
   const triggerLossEvent = useCallback(
@@ -1437,6 +1443,9 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
         // First, get the new candle data with the current stance
         const { candle, evaluation, visual } = consumeNextCandleVisual(hover.stance)
 
+        // Update the current candle for the chart (updates every second during hover)
+        updateCurrentCandle(candle)
+
         // Calculate market direction for both auto-align and tower lean compensation
         const marketDirection = computeMarketDirection(evaluation.features)
         const conviction = computeMarketConviction(evaluation.features)
@@ -1734,7 +1743,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
 
     const interval = setInterval(modulateHover, 16)
     return () => clearInterval(interval)
-  }, [phase, consumeNextCandleVisual, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators])
+  }, [phase, consumeNextCandleVisual, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators, updateCurrentCandle])
 
   // Check for loss events based on equity drawdown (includes unrealized P&L)
   // Subscribe to equity changes from account state
