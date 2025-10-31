@@ -537,6 +537,16 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     [syncTowerOffset],
   )
 
+  const peekCurrentCandleVisual = useCallback((stance: Stance = "flat") => {
+    const candle = candleSourceRef.current.peek()
+    const provider = candleSourceRef.current.getSource()
+    setDataProvider(provider)
+    const evaluation = computeFeatures(featureStateRef.current, candle)
+    // Note: We don't update featureStateRef here during peek, only on consume
+    const visual = featuresToStoneVisual(evaluation.features, candle.timestamp, stance)
+    return { candle, evaluation, visual }
+  }, [setDataProvider])
+
   const consumeNextCandleVisual = useCallback((stance: Stance = "flat") => {
     const candle = candleSourceRef.current.next()
     const provider = candleSourceRef.current.getSource()
@@ -1440,10 +1450,11 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
         const accountState = useAccountState.getState()
         let targetStance = hover.stance
 
-        // First, get the new candle data with the current stance
-        const { candle, evaluation, visual } = consumeNextCandleVisual(hover.stance)
+        // Peek at the current forming candle (don't consume it yet)
+        // This allows us to see the 30-second candle forming with 1-second updates
+        const { candle, evaluation, visual } = peekCurrentCandleVisual(hover.stance)
 
-        // Update the current candle for the chart (updates every second during hover)
+        // Update the current candle for the chart (shows the forming 30s candle)
         updateCurrentCandle(candle)
 
         // Calculate market direction for both auto-align and tower lean compensation
@@ -1743,7 +1754,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
 
     const interval = setInterval(modulateHover, 16)
     return () => clearInterval(interval)
-  }, [phase, consumeNextCandleVisual, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators, updateCurrentCandle])
+  }, [phase, peekCurrentCandleVisual, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators, updateCurrentCandle])
 
   // Check for loss events based on equity drawdown (includes unrealized P&L)
   // Subscribe to equity changes from account state

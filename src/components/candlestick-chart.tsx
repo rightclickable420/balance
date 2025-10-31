@@ -33,6 +33,7 @@ interface TooltipProps {
 
 export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30 }: CandlestickChartProps) {
   const [chartData, setChartData] = useState<ChartDataPoint[]>([])
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 0])
 
   useEffect(() => {
     // Combine history with current forming candle
@@ -72,6 +73,50 @@ export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30
     })
 
     setChartData(data)
+
+    // Update price range with smooth expansion (only expand, rarely contract)
+    if (data.length > 0) {
+      const allPrices = data.flatMap(d => [d.high, d.low])
+      const newMin = Math.min(...allPrices)
+      const newMax = Math.max(...allPrices)
+
+      setPriceRange(([prevMin, prevMax]) => {
+        // If this is the first data, set initial range
+        if (prevMin === 0 && prevMax === 0) {
+          const padding = (newMax - newMin) * 0.15
+          return [newMin - padding, newMax + padding]
+        }
+
+        // Only expand the range if prices go outside current bounds
+        // Add small padding when expanding
+        let min = prevMin
+        let max = prevMax
+
+        if (newMin < prevMin) {
+          const expansion = (prevMin - newMin) * 1.2
+          min = newMin - expansion
+        }
+
+        if (newMax > prevMax) {
+          const expansion = (newMax - prevMax) * 1.2
+          max = newMax + expansion
+        }
+
+        // Very gradually contract if prices stay well within bounds for a while
+        // This prevents the chart from becoming too zoomed out over time
+        const currentRange = prevMax - prevMin
+        const dataRange = newMax - newMin
+        if (dataRange < currentRange * 0.6) {
+          // Slowly move bounds closer to data
+          const targetMin = newMin - (dataRange * 0.15)
+          const targetMax = newMax + (dataRange * 0.15)
+          min = prevMin * 0.95 + targetMin * 0.05
+          max = prevMax * 0.95 + targetMax * 0.05
+        }
+
+        return [min, max]
+      })
+    }
   }, [candleHistory, currentCandle, maxCandles])
 
   const CustomTooltip = ({ active, payload }: TooltipProps) => {
@@ -102,7 +147,7 @@ export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30
     )
   }
 
-  if (chartData.length === 0) {
+  if (chartData.length === 0 || (priceRange[0] === 0 && priceRange[1] === 0)) {
     return (
       <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
         Waiting for data...
@@ -110,12 +155,8 @@ export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30
     )
   }
 
-  // Get min/max for Y axis domain
-  const allPrices = chartData.flatMap(d => [d.high, d.low])
-  const minPrice = Math.min(...allPrices)
-  const maxPrice = Math.max(...allPrices)
-  const padding = (maxPrice - minPrice) * 0.1
-  const yDomain = [minPrice - padding, maxPrice + padding]
+  // Use the smoothly updating price range
+  const yDomain = priceRange
 
   // Custom candlestick shape using Bar chart
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -141,7 +182,8 @@ export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30
 
     const bodyTop = Math.min(openY, closeY)
     const bodyHeight = Math.abs(closeY - openY)
-    const candleWidth = Math.min(width * 0.7, 8) // Max 8px wide
+    // Smaller candle width with gaps (60% of available space, max 6px)
+    const candleWidth = Math.min(width * 0.6, 6)
 
     const color = isGreen ? '#10b981' : '#ef4444'
     const centerX = x + width / 2
