@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
+import { ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import type { Candle } from "../lib/types"
 
 interface CandlestickChartProps {
@@ -20,6 +20,10 @@ interface ChartDataPoint {
   volume: number
   price: number
   fill: string
+  // For candlestick rendering
+  bodyRange: [number, number] // [min(open,close), max(open,close)]
+  wickRange: [number, number] // [low, high]
+  isGreen: boolean
 }
 
 interface TooltipProps {
@@ -47,6 +51,10 @@ export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30
         second: '2-digit'
       })
 
+      const isGreen = candle.close >= candle.open
+      const bodyMin = Math.min(candle.open, candle.close)
+      const bodyMax = Math.max(candle.open, candle.close)
+
       return {
         time,
         timestamp: candle.timestamp,
@@ -55,10 +63,11 @@ export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30
         low: candle.low,
         close: candle.close,
         volume: candle.volume,
-        // For simple line chart showing close prices
         price: candle.close,
-        // Color based on candle direction
-        fill: candle.close >= candle.open ? '#10b981' : '#ef4444',
+        fill: isGreen ? '#10b981' : '#ef4444',
+        bodyRange: [bodyMin, bodyMax] as [number, number],
+        wickRange: [candle.low, candle.high] as [number, number],
+        isGreen,
       }
     })
 
@@ -108,19 +117,67 @@ export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30
   const padding = (maxPrice - minPrice) * 0.1
   const yDomain = [minPrice - padding, maxPrice + padding]
 
+  // Custom candlestick shape using Bar chart
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderCandlestick = (props: any) => {
+    const { x, width, height, index } = props
+    if (index === undefined) return <g />
+
+    const dataPoint = chartData[index]
+    if (!dataPoint) return <g />
+
+    const { open, close, high, low, isGreen } = dataPoint
+
+    // Calculate canvas dimensions from the chart
+    const chartHeight = height
+    const priceRange = yDomain[1] - yDomain[0]
+    const pixelsPerPrice = chartHeight / priceRange
+
+    // Calculate positions (Y increases downward in SVG)
+    const highY = (yDomain[1] - high) * pixelsPerPrice
+    const lowY = (yDomain[1] - low) * pixelsPerPrice
+    const openY = (yDomain[1] - open) * pixelsPerPrice
+    const closeY = (yDomain[1] - close) * pixelsPerPrice
+
+    const bodyTop = Math.min(openY, closeY)
+    const bodyHeight = Math.abs(closeY - openY)
+    const candleWidth = Math.min(width * 0.7, 8) // Max 8px wide
+
+    const color = isGreen ? '#10b981' : '#ef4444'
+    const centerX = x + width / 2
+
+    return (
+      <g>
+        {/* Wick (thin line from low to high) */}
+        <line
+          x1={centerX}
+          y1={highY}
+          x2={centerX}
+          y2={lowY}
+          stroke={color}
+          strokeWidth={1}
+        />
+
+        {/* Body (rectangle from open to close) */}
+        <rect
+          x={centerX - candleWidth / 2}
+          y={bodyTop}
+          width={candleWidth}
+          height={Math.max(bodyHeight, 1)} // Minimum 1px for doji
+          fill={color}
+          stroke={color}
+          strokeWidth={1}
+        />
+      </g>
+    )
+  }
+
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart
+      <ComposedChart
         data={chartData}
         margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
       >
-        <defs>
-          <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-
         <XAxis
           dataKey="time"
           stroke="#4b5563"
@@ -143,15 +200,13 @@ export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30
 
         <Tooltip content={<CustomTooltip />} />
 
-        <Area
-          type="monotone"
-          dataKey="price"
-          stroke="#3b82f6"
-          strokeWidth={2}
-          fill="url(#priceGradient)"
+        {/* Use Bar chart with custom shape for candlesticks */}
+        <Bar
+          dataKey="close"
+          shape={renderCandlestick}
           isAnimationActive={false}
         />
-      </AreaChart>
+      </ComposedChart>
     </ResponsiveContainer>
   )
 }
