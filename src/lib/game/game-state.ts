@@ -107,7 +107,7 @@ export interface GameState {
 export const useGameState = create<GameState>((set) => ({
   // Initial state
   setupPhase: "not_started",
-  experienceMode: "balance",
+  experienceMode: "doomrunner", // Default to Doom Runner (Balance mode removed)
   gameMode: "mock",
   mockBalance: 1000,
   phase: "waiting",
@@ -214,7 +214,7 @@ export const useGameState = create<GameState>((set) => ({
   reset: () =>
     set({
       setupPhase: "not_started",
-      experienceMode: "balance",
+      experienceMode: "doomrunner", // Default to Doom Runner (Balance mode removed)
       gameMode: "mock",
       mockBalance: 1000,
       phase: "waiting",
