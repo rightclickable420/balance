@@ -6,6 +6,9 @@ import { useAccountState } from "@/lib/game/account-state"
 import { GzdoomRunner, type DoomRunnerBridge } from "./gzdoom-runner"
 import { computeMarketDirection, computeMarketConviction } from "@/lib/game/alignment"
 import type { TradingStrategy } from "@/lib/trading/trading-controller"
+import { createCandleSource } from "@/lib/data/candle-source-factory"
+import { extractFeatures } from "@/lib/data/features"
+import type { CandleSource, Candle } from "@/lib/types"
 
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value))
 
@@ -34,6 +37,10 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
   const lastPrice = useAccountState((state) => state.lastPrice)
   const resetAccount = useAccountState((state) => state.reset)
   const setAutoAlignToggle = useAccountState((state) => state.setAutoAlign)
+
+  // Data source refs
+  const dataSourceRef = useRef<CandleSource | null>(null)
+  const candleHistoryRef = useRef<Candle[]>([])
 
   const hpPct = useMemo(() => {
     if (!Number.isFinite(equity) || equity <= 0) return 0
@@ -97,6 +104,47 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
       autoModeRef.current = false
     }
   }, [engineReady])
+
+  // Initialize data feed
+  useEffect(() => {
+    console.log("[DoomRunner] Initializing data feed...")
+    const dataSource = createCandleSource()
+    dataSourceRef.current = dataSource
+
+    const { setDataProvider, setLatestFeatures, addCandleToHistory } = useGameState.getState()
+    const { setLastPrice } = useAccountState.getState()
+
+    setDataProvider(dataSource.getSource())
+    console.log("[DoomRunner] Data source:", dataSource.getSource())
+
+    const unsubscribe = dataSource.subscribe((candle: Candle) => {
+      // Update candle history
+      candleHistoryRef.current = [...candleHistoryRef.current, candle].slice(-180) // Keep last 180 candles
+      addCandleToHistory(candle)
+
+      // Update price
+      setLastPrice(candle.close)
+
+      // Extract and update features
+      if (candleHistoryRef.current.length >= 10) {
+        const features = extractFeatures(candleHistoryRef.current)
+        setLatestFeatures(features)
+        console.log("[DoomRunner] Features updated:", {
+          momentum: features.momentum.toFixed(3),
+          conviction: features.breadth.toFixed(3),
+          price: candle.close.toFixed(2),
+        })
+      }
+    })
+
+    console.log("[DoomRunner] ✅ Data feed subscribed")
+
+    return () => {
+      console.log("[DoomRunner] Cleaning up data feed...")
+      unsubscribe()
+      dataSourceRef.current = null
+    }
+  }, []) // Run once on mount
 
   // Auto-align decision logic - updates stance based on market features and strategy
   useEffect(() => {
