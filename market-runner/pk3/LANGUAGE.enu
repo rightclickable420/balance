@@ -1,0 +1,6 @@
+[default]
+MR_ALIGNED = "ALIGNED";
+MR_LOSS = "LOSS EVENT";
+MR_FLAT = "FLAT";
+MR_STREAK = "STREAK: %d";
+MR_VOL = "VOL: %0.2f";

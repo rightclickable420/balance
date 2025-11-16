@@ -29,8 +29,6 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Credits
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The Doom Runner experience (web + pk3) uses sprite and texture art sourced from the [Freedoom](https://github.com/freedoom/freedoom) project (BSD-3-Clause). Copies of the upstream license are bundled under `market-runner/THIRD_PARTY/FREEDOOM_LICENSE.txt`, and the same assets are mirrored in `public/doom-runner/` for the browser scene.

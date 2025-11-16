@@ -68,7 +68,7 @@ export const useAccountState = create<AccountState>((set, get) => ({
   },
 
   setLeverage: (leverage) => {
-    const clampedLeverage = clampNumber(leverage, 1, 20) // Allow 1x to 20x
+    const clampedLeverage = clampNumber(leverage, 1, 100) // Allow 1x to 100x
     set({ leverage: clampedLeverage })
     console.log(`[Leverage] Set to ${clampedLeverage}x`)
   },
@@ -278,5 +278,6 @@ export const useAccountState = create<AccountState>((set, get) => ({
       currentPositionEntryPrice: null,
       currentPositionStance: "flat",
       isLiquidated: false,
+      autoAlign: false,
     }),
 }))

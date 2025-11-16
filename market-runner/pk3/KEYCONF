@@ -1,0 +1,8 @@
+addkeysection "Market Runner" MarketRunner
+addmenukey "Toggle Long/Short" mr_togglels
+addmenukey "Toggle Flat" mr_toggleflat
+addmenukey "Toggle Auto Mode" mr_automode
+
+alias mr_togglels "pukename MR_ToggleLS"
+alias mr_toggleflat "pukename MR_ToggleFlat"
+alias mr_automode "pukename MR_ToggleAuto"

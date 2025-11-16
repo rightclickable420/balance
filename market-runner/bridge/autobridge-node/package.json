@@ -1,0 +1,10 @@
+{
+  "name": "market-runner-autobridge",
+  "version": "0.1.0",
+  "description": "CLI helper that prints Market Runner console commands on a timeline",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js sample.json"
+  }
+}

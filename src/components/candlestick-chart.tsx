@@ -182,8 +182,8 @@ export function CandlestickChart({ candleHistory, currentCandle, maxCandles = 30
 
     const bodyTop = Math.min(openY, closeY)
     const bodyHeight = Math.abs(closeY - openY)
-    // Smaller candle width with gaps (60% of available space, max 6px)
-    const candleWidth = Math.min(width * 0.6, 6)
+    // Very thin candles for 1-second intervals (40% of available space, max 3px)
+    const candleWidth = Math.min(width * 0.4, 3)
 
     const color = isGreen ? '#10b981' : '#ef4444'
     const centerX = x + width / 2

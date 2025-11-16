@@ -1,0 +1,24 @@
+gameinfo
+{
+  playerclasses = "MR_Player"
+  defaultbloodcolor = "Green"
+  StatusBarClass = "MR_StatusBar"
+}
+
+defaultmap
+{
+  noswimming
+  allowmonstertelefrags
+  forbidmonsters
+}
+
+map MR01 "Market Runner 01"
+{
+  levelnum = 1
+  cluster = 1
+  next = "MR01"
+  sky1 = "SKY1", 0
+  music = "D_RUNNIN"
+  nointermission
+  sucktime = 1
+}

@@ -31,14 +31,21 @@ export interface AlignmentSample {
  * Returns value from -1 (bearish) to 1 (bullish)
  */
 export const computeMarketDirection = (features: Features): number => {
+  // Defensive checks: ensure all feature values are valid numbers
+  const safeOrderImbalance = Number.isFinite(features.orderImbalance) ? features.orderImbalance : 0
+  const safeMomentum = Number.isFinite(features.momentum) ? features.momentum : 0
+  const safeBreadth = Number.isFinite(features.breadth) ? features.breadth : 0
+  const safeVolume = Number.isFinite(features.volume) ? features.volume : 0.5
+  const safeVolatility = Number.isFinite(features.volatility) ? features.volatility : 0.5
+
   // Trend Strength: Multi-candle bias weighted more than single-candle momentum
   // orderImbalance = persistent directional bias (most important)
   // momentum = current candle direction
   // breadth = candle quality (body vs wick ratio)
   const trendStrength = clamp(
-    features.orderImbalance * 0.5 +
-    features.momentum * 0.3 +
-    features.breadth * 0.2,
+    safeOrderImbalance * 0.5 +
+    safeMomentum * 0.3 +
+    safeBreadth * 0.2,
     -1,
     1
   )
@@ -46,12 +53,12 @@ export const computeMarketDirection = (features: Features): number => {
   // Volume Confirmation: High volume confirms the move, low volume weakens it
   // volume > 0.5 → multiplier > 1.0 (strengthens signal)
   // volume < 0.5 → multiplier < 1.0 (weakens signal)
-  const volumeConfirmation = 0.7 + features.volume * 0.6 // Range: 0.7 to 1.3
+  const volumeConfirmation = 0.7 + safeVolume * 0.6 // Range: 0.7 to 1.3
 
   // Volatility Penalty: High volatility makes signals less reliable
   // volatility = 0 → no penalty (1.0)
   // volatility = 1 → max penalty (0.7)
-  const volatilityPenalty = 1.0 - clamp(features.volatility, 0, 1) * 0.3
+  const volatilityPenalty = 1.0 - clamp(safeVolatility, 0, 1) * 0.3
 
   // Combined market direction with confirmations and adjustments
   const marketDirection = trendStrength * volumeConfirmation * volatilityPenalty
@@ -71,10 +78,17 @@ export const computeMarketConviction = (features: Features): number => {
   // 3. Low volatility (stable conditions, not choppy)
   // 4. Good breadth (clean candles, not wicky/indecisive)
 
-  const directionalClarity = (Math.abs(features.momentum) * 0.4 + Math.abs(features.orderImbalance) * 0.4) / 0.8
-  const volumeConviction = features.volume
-  const stabilityFactor = 1.0 - clamp(features.volatility, 0, 1)
-  const candleQuality = Math.abs(features.breadth) // High breadth = strong bodies
+  // Defensive checks: ensure all feature values are valid numbers
+  const safeMomentum = Number.isFinite(features.momentum) ? features.momentum : 0
+  const safeOrderImbalance = Number.isFinite(features.orderImbalance) ? features.orderImbalance : 0
+  const safeVolume = Number.isFinite(features.volume) ? features.volume : 0.5
+  const safeVolatility = Number.isFinite(features.volatility) ? features.volatility : 0.5
+  const safeBreadth = Number.isFinite(features.breadth) ? features.breadth : 0
+
+  const directionalClarity = (Math.abs(safeMomentum) * 0.4 + Math.abs(safeOrderImbalance) * 0.4) / 0.8
+  const volumeConviction = safeVolume
+  const stabilityFactor = 1.0 - clamp(safeVolatility, 0, 1)
+  const candleQuality = Math.abs(safeBreadth) // High breadth = strong bodies
 
   const conviction = clamp(
     directionalClarity * 0.4 +

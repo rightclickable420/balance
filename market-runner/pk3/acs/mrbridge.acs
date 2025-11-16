@@ -1,0 +1,32 @@
+#library "mrbridge"
+#include "zcommon.acs"
+
+script "MR_ToggleLS" (void)
+{
+  ScriptCall("MR_Bridge", "ToggleLS");
+}
+
+script "MR_ToggleFlat" (void)
+{
+  ScriptCall("MR_Bridge", "ToggleFlat");
+}
+
+script "MR_ToggleAuto" (void)
+{
+  ScriptCall("MR_Bridge", "ToggleAuto");
+}
+
+script "MR_SetAlign" (int state)
+{
+  ScriptCall("MR_Bridge", "SetAlign", state);
+}
+
+script "MR_SetSigma" (int raw)
+{
+  ScriptCall("MR_Bridge", "SetSigma", raw);
+}
+
+script "MR_SetLoss" (int raw)
+{
+  ScriptCall("MR_Bridge", "SetLoss", raw);
+}

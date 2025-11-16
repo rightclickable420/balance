@@ -1,7 +1,11 @@
 import Matter from "matter-js"
+import decomp from "poly-decomp"
 import type { StoneParams } from "../types"
 import type { AnchoredTrapezoid, Point } from "./stone-generator"
 import { calculateArea } from "./stone-generator"
+
+// Configure Matter.js to use poly-decomp for concave polygon decomposition
+Matter.Common.setDecomp(decomp)
 
 const normalizeAngle = (angle: number) => {
   let result = angle % (Math.PI * 2)
@@ -75,6 +79,12 @@ export class PhysicsEngine {
   private gravityBias: { x: number; y: number } = { x: 0, y: 0 }
 
   constructor(width: number, height: number, gravity: number) {
+    // Ensure poly-decomp is configured (defensive check for SSR/hydration issues)
+    if (!Matter.Common.decomp) {
+      console.warn("[PhysicsEngine] poly-decomp not found, configuring now")
+      Matter.Common.setDecomp(decomp)
+    }
+
     this.engine = Matter.Engine.create({
       gravity: { x: 0, y: gravity / 1000 }, // Convert to Matter.js units
     })
@@ -92,9 +102,21 @@ export class PhysicsEngine {
   /**
    * Add a stone to the physics world
    */
-  addStone({ vertices, params, x, y, color, topAngle, anchor = null, supportTargetX }: AddStoneInput): Stone {
+  addStone({ vertices, params, x, y, color, topAngle, anchor = null, supportTargetX }: AddStoneInput): Stone | null {
+    // Defensive check: ensure poly-decomp is available
+    if (!Matter.Common.decomp) {
+      console.error("[PhysicsEngine] poly-decomp not configured! Configuring now...")
+      Matter.Common.setDecomp(decomp)
+    }
+
     // Convert vertices to Matter.js format
     const matterVertices = vertices.map((v) => ({ x: v.x, y: v.y }))
+
+    // Validate vertices
+    if (matterVertices.length < 3) {
+      console.error(`[PhysicsEngine] Invalid vertices count: ${matterVertices.length}`)
+      return null
+    }
 
     // Calculate mass from area and density
     const area = calculateArea(vertices)
@@ -107,6 +129,12 @@ export class PhysicsEngine {
       density: params.density,
       mass,
     })
+
+    // Validate body was created successfully
+    if (!body || !body.vertices || body.vertices.length === 0) {
+      console.error("[PhysicsEngine] Failed to create body from vertices:", matterVertices)
+      return null
+    }
 
     // Add to world
     Matter.World.add(this.world, body)

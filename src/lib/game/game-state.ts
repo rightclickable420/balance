@@ -2,11 +2,21 @@ import { create } from "zustand"
 import type { Candle } from "../types"
 import type { Stone } from "./physics-engine"
 import type { Features } from "@/lib/data/features"
+import type { PublicKey } from "@solana/web3.js"
 
 export type GamePhase = "waiting" | "hovering" | "placing" | "stable" | "loss" | "settled"
 export type Stance = "long" | "short" | "flat"
+export type GameMode = "mock" | "real"
+export type ExperienceMode = "balance" | "doomrunner"
+export type SetupPhase = "not_started" | "in_setup" | "playing"
 
 export interface GameState {
+  // Setup & Mode
+  setupPhase: SetupPhase
+  experienceMode: ExperienceMode
+  gameMode: GameMode
+  mockBalance: number // Starting balance for mock mode
+
   // Game status
   phase: GamePhase
   score: number
@@ -45,7 +55,22 @@ export interface GameState {
   disturberStrength: number
   disturberDirection: number
 
+  // Wallet & Trading
+  sessionWalletPublicKey: PublicKey | null
+  sessionWalletBalance: number // SOL balance in session wallet
+  startingRealBalance: number // Starting balance for real mode (to calculate total PnL)
+  equity: number // Current equity (balance + unrealized PnL)
+  openPositionSize: number // Current position size in USD
+  unrealizedPnl: number // Unrealized profit/loss
+  realizedPnl: number // Cumulative realized PnL for session
+  tradingLeverage: number // Configured leverage for real trading
+  tradingStrategy: string // Configured strategy for real trading
+
   // Actions
+  setSetupPhase: (phase: SetupPhase) => void
+  setExperienceMode: (mode: ExperienceMode) => void
+  setGameMode: (mode: GameMode) => void
+  startGame: (mode: GameMode) => void
   setPhase: (phase: GamePhase) => void
   setScore: (score: number) => void
   incrementScore: (amount: number) => void
@@ -71,11 +96,20 @@ export interface GameState {
   setForceStrengths: (stabilizer: number, disturber: number, direction?: number) => void
   addCandleToHistory: (candle: Candle) => void
   updateCurrentCandle: (candle: Candle) => void
+  setSessionWallet: (publicKey: PublicKey | null, balance: number) => void
+  setEquity: (equity: number) => void
+  setPosition: (size: number, unrealizedPnl: number) => void
+  addRealizedPnl: (pnl: number) => void
+  setTradingConfig: (leverage: number, strategy: string) => void
   reset: () => void
 }
 
 export const useGameState = create<GameState>((set) => ({
   // Initial state
+  setupPhase: "not_started",
+  experienceMode: "balance",
+  gameMode: "mock",
+  mockBalance: 1000,
   phase: "waiting",
   score: 0,
   stonesPlaced: 0,
@@ -105,8 +139,27 @@ export const useGameState = create<GameState>((set) => ({
   stabilizerStrength: 0,
   disturberStrength: 0,
   disturberDirection: 0,
+  sessionWalletPublicKey: null,
+  sessionWalletBalance: 0,
+  startingRealBalance: 0,
+  equity: 0,
+  openPositionSize: 0,
+  unrealizedPnl: 0,
+  realizedPnl: 0,
+  tradingLeverage: 5,
+  tradingStrategy: "balanced",
 
   // Actions
+  setSetupPhase: (setupPhase) => set({ setupPhase }),
+  setExperienceMode: (experienceMode) => set({ experienceMode }),
+  setGameMode: (gameMode) => set({ gameMode }),
+  startGame: (mode) => set({
+    gameMode: mode,
+    setupPhase: "playing",
+    mockBalance: mode === "mock" ? 1000 : 0,
+    equity: mode === "mock" ? 1000 : 0,
+    dataProvider: mode === "mock" ? "mock" : "real"
+  }),
   setPhase: (phase) => set({ phase }),
   setScore: (score) => set({ score }),
   incrementScore: (amount) => set((state) => ({ score: state.score + amount })),
@@ -138,13 +191,32 @@ export const useGameState = create<GameState>((set) => ({
     set({ stabilizerStrength, disturberStrength, disturberDirection }),
   addCandleToHistory: (candle) =>
     set((state) => ({
-      candleHistory: [...state.candleHistory, candle].slice(-30), // Keep last 30 candles
+      candleHistory: [...state.candleHistory, candle].slice(-60), // Keep last 60 1-second candles
       currentCandle: candle,
     })),
   updateCurrentCandle: (candle) =>
     set({ currentCandle: candle }),
+  setSessionWallet: (sessionWalletPublicKey, sessionWalletBalance) =>
+    set((state) => ({
+      sessionWalletPublicKey,
+      sessionWalletBalance,
+      // Set starting balance on first wallet connection (when it was previously 0)
+      startingRealBalance: state.startingRealBalance === 0 ? sessionWalletBalance : state.startingRealBalance
+    })),
+  setEquity: (equity) =>
+    set({ equity }),
+  setPosition: (openPositionSize, unrealizedPnl) =>
+    set({ openPositionSize, unrealizedPnl }),
+  addRealizedPnl: (pnl) =>
+    set((state) => ({ realizedPnl: state.realizedPnl + pnl })),
+  setTradingConfig: (tradingLeverage, tradingStrategy) =>
+    set({ tradingLeverage, tradingStrategy }),
   reset: () =>
     set({
+      setupPhase: "not_started",
+      experienceMode: "balance",
+      gameMode: "mock",
+      mockBalance: 1000,
       phase: "waiting",
       score: 0,
       stonesPlaced: 0,
@@ -174,5 +246,12 @@ export const useGameState = create<GameState>((set) => ({
       stabilizerStrength: 0,
       disturberStrength: 0,
       disturberDirection: 0,
+      sessionWalletPublicKey: null,
+      sessionWalletBalance: 0,
+      startingRealBalance: 0,
+      equity: 0,
+      openPositionSize: 0,
+      unrealizedPnl: 0,
+      realizedPnl: 0,
     }),
 }))

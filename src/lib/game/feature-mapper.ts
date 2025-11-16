@@ -54,6 +54,11 @@ export const featuresToStoneVisual = (features: Features, seed: number, stance: 
   // Calculate market direction (independent of stance) for stone geometry
   const marketDirection = computeMarketDirection(features)
 
+  // Safety check: if marketDirection is NaN, default to 0 (neutral)
+  if (!Number.isFinite(marketDirection)) {
+    console.warn('[StoneVisual] marketDirection is NaN, defaulting to 0')
+  }
+
   // Calculate alignment score for color/styling based on stance
   const alignment = computeRawAlignment(features, stance)
 
@@ -94,15 +99,21 @@ export const featuresToStoneVisual = (features: Features, seed: number, stance: 
   // Bullish market → angles lean one way
   // Bearish market → angles lean opposite way
   // The player's stance only affects orientation (rotation), not shape
-  const marketSignal = marketDirection  // Already clamped -1 to 1
+  const marketSignal = Number.isFinite(marketDirection) ? marketDirection : 0  // Safety: default to 0 if NaN
 
   // Conviction based on market features (how strong/clear the signal is)
+  const safeMomentum = Number.isFinite(momentum) ? momentum : 0
+  const safeOrder = Number.isFinite(order) ? order : 0
+  const safeRegime = Number.isFinite(regime) ? regime : 0
+  const safeVolatility = Number.isFinite(volatility) ? volatility : 0.5
+  const safeBreadth = Number.isFinite(breadth) ? breadth : 0
+
   const conviction = clamp01(
-    Math.abs(momentum) * 0.5 +
-      Math.abs(order) * 0.25 +
-      Math.max(0, regime) * 0.15 +
-      (1 - volatility) * 0.1 +
-      (1 - Math.abs(breadth)) * 0.05,
+    Math.abs(safeMomentum) * 0.5 +
+      Math.abs(safeOrder) * 0.25 +
+      Math.max(0, safeRegime) * 0.15 +
+      (1 - safeVolatility) * 0.1 +
+      (1 - Math.abs(safeBreadth)) * 0.05,
   )
 
   // Strong market direction → more extreme angles

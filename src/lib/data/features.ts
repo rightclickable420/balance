@@ -46,13 +46,15 @@ export const computeFeatures = (
   const rangeRaw = Math.max(high - low, 0)
   const body = Math.abs(close - open)
   const price = ensurePositive(Math.abs(close))
-  const range = ensurePositive(rangeRaw)
+  // Don't use ensurePositive on range - we need to detect true zero for flat candles
+  const range = rangeRaw
 
   const emaBody = updateEma(prevState.emaBody, body)
-  const emaRange = updateEma(prevState.emaRange, range)
+  const emaRange = updateEma(prevState.emaRange, ensurePositive(range))  // Only ensure positive for EMA
   const emaVolume = updateEma(prevState.emaVolume, volume)
 
-  const rawMomentum = tanhSafe((close - open) / range)
+  // Prevent division by zero when range is 0 (flat candle)
+  const rawMomentum = range > 0 ? tanhSafe((close - open) / range) : 0
   const volatility = clamp01((emaRange / price) * VOLATILITY_SCALE)
 
   const volumeRatio = emaVolume === 0 ? 1 : volume / ensurePositive(emaVolume)
@@ -63,7 +65,8 @@ export const computeFeatures = (
   let orderBias = prevState.orderBias
   if (prevState.lastClose !== null) {
     const delta = close - prevState.lastClose
-    const rawOrder = tanhSafe(delta / range)
+    // Prevent division by zero when range is 0
+    const rawOrder = range > 0 ? tanhSafe(delta / range) : 0
     orderBias = clamp(orderBias + ORDER_ALPHA * (rawOrder - orderBias), -1, 1)
   } else {
     orderBias = rawMomentum

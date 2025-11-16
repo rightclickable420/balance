@@ -132,3 +132,20 @@ Market Data → Feature Mapping → Alignment Engine
 5. Re-introduce passive helper modes once stability confirmed; expand telemetry logging for field tuning.
 
 > _Appendix_: expand with diagrams or tuning cheat sheet once Phase A lands.
+
+## 9. Doom Runner Web Port Direction (New)
+- **Problem recap**: GZDoom + GLES nightly builds fail WebGL shader compilation (dynamic loops, unsupported contexts). Weeks of tweaking args/configs haven’t produced a stable browser build, blocking the auto-runner experience.
+- **Strategy shift**: adopt a lightweight Doom port that already targets WASM/software rendering (PrBoom+/DSDA-Doom wasm forks) instead of forcing the full GZDoom GLES stack.
+- **Benefits**:
+  - Deterministic software renderer → no WebGL shader hurdles.
+  - Straightforward IWAD/PWAD pipeline for Freedoom + custom Market Runner content.
+  - Smaller code surface; easier to expose API hooks for binary path decisions (long/short alignment).
+- **Execution plan**:
+  1. **Engine baseline**: clone a maintained wasm-ready PrBoom+/dsda port, build once with Emscripten, and drop the output into `public/gzdoom-runner/` (reusing the existing iframe shell).
+  2. **Content authoring**: craft a PWAD that encodes the infinite “on-rails” map—auto-movement, scripted firing, and left/right decision portals tied to long/short states.
+  3. **Bridge API**: expose a simple command channel (console commands/CVARs) so the React layer can instruct the engine which branch to take or when to trigger encounters.
+  4. **Market integration**: map real-time alignment/volatility data to portal choices and encounter pacing; keep Doom visuals recognizable while the gameplay mirrors alignment decisions.
+- **Next actions**:
+  - Evaluate available wasm repos (dsda-doom, classic-runners) and pick the one with the cleanest build story.
+  - Prototype the iframe swap using the new wasm bundle to confirm load/perf in the existing Next.js shell.
+  - Kick off PWAD scripting to prove the “rail shooter with binary portals” loop before layering in market data.

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import Matter from "matter-js"
 import { GameCanvas } from "./game-canvas"
+import { GameSetupScreen } from "./game-setup-screen"
+import { DoomRunnerExperience } from "./doom-runner-experience"
 import { useGestureControls } from "@/hooks/use-gesture-controls"
 import { PhysicsEngine, type Stone } from "@/lib/game/physics-engine"
 import {
@@ -14,7 +16,7 @@ import {
   type TrapezoidMetrics,
 } from "@/lib/game/stone-generator"
 import { DEFAULT_CONFIG } from "@/lib/config"
-import { useGameState, type Stance } from "@/lib/game/game-state"
+import { useGameState, type Stance, type GameMode } from "@/lib/game/game-state"
 import { useAccountState } from "@/lib/game/account-state"
 import { initFeatureState, computeFeatures, type Features } from "@/lib/data/features"
 import { featuresToStoneVisual, type StoneGeometryInput } from "@/lib/game/feature-mapper"
@@ -22,6 +24,7 @@ import { computeRawAlignment, computeMarketDirection, computeMarketConviction, u
 import type { Candle, StoneParams } from "@/lib/types"
 import { createCandleSource } from "@/lib/data/candle-source-factory"
 import { stonesToLoseFromDrawdown, calculateLossSeverity } from "@/lib/game/loss"
+import { getTradingController } from "@/lib/trading/trading-controller"
 
 const CANVAS_WIDTH = 800
 const CANVAS_HEIGHT = 600
@@ -388,7 +391,7 @@ interface GameContainerProps {
 
 export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
   const engineRef = useRef<PhysicsEngine | null>(null)
-  const candleSourceRef = useRef(createCandleSource())
+  const candleSourceRef = useRef<ReturnType<typeof createCandleSource> | null>(null)
   const alignmentSampleRef = useRef<AlignmentSample>({
     score: 0,
     velocity: 0,
@@ -401,6 +404,8 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
   const supportFrameRef = useRef<StackOrientation>(DEFAULT_STACK_ORIENTATION)
   const topStoneRef = useRef<Stone | null>(null)
   const totalStonesCreatedRef = useRef(0) // Track total stones ever created for alternating pattern
+  const lastTradingStanceRef = useRef<Stance>("flat") // Track last stance sent to trading controller
+  const tradingControllerRef = useRef(getTradingController())
   const stackTopYRef = useRef(GROUND_Y)
   const stackSurfaceYRef = useRef(GROUND_Y)
   const towerOffsetTargetRef = useRef(0)
@@ -439,6 +444,10 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
   const beginPlacementFromHoverRef = useRef<() => void>(() => {})
 
   const {
+    setupPhase,
+    experienceMode,
+    gameMode,
+    startGame,
     phase,
     setPhase,
     canDecide,
@@ -466,11 +475,73 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     stabilizerStrength,
     disturberStrength,
     decisionProgress,
-    addCandleToHistory,
-    updateCurrentCandle,
   } = useGameState()
 
   const accountState = useAccountState()
+
+  // Handler for starting the game from setup screen
+  const handleStartGame = useCallback(async (
+    mode: GameMode,
+    strategy?: import("@/lib/trading/trading-controller").TradingStrategy,
+    leverage?: number
+  ) => {
+    console.log(`[Game] Starting game in ${mode} mode`, { strategy, leverage })
+
+    // Store trading config in game state and sync account state
+    if (strategy && leverage) {
+      const { setTradingConfig } = useGameState.getState()
+      setTradingConfig(leverage, strategy)
+
+      // Sync account state with setup selections
+      const { setLeverage, setAutoAlign } = useAccountState.getState()
+      setLeverage(leverage)
+      // Manual strategy = auto-align OFF, all others = auto-align ON
+      setAutoAlign(strategy !== "manual")
+      console.log(`[Game] Account state synced: ${leverage}x leverage, auto-align ${strategy !== "manual" ? 'ON' : 'OFF'}`)
+    }
+
+    // Configure and initialize trading controller if real mode
+    if (mode === "real" && strategy && leverage) {
+      const { getTradingController } = require("@/lib/trading/trading-controller")
+      const { getDriftPositionManager } = require("@/lib/trading/drift-position-manager")
+      const { getSessionWallet } = require("@/lib/wallet/session-wallet")
+
+      const controller = getTradingController()
+      controller.updateConfig({
+        strategy,
+        leverage,
+      })
+      console.log(`[Game] Trading configured: ${strategy} strategy, ${leverage}x leverage`)
+
+      // Ensure Drift is initialized before starting
+      try {
+        const sessionWallet = getSessionWallet()
+        const keypair = sessionWallet.getKeypair()
+
+        if (!keypair) {
+          console.error("[Game] No session wallet keypair found")
+          alert("Session wallet not initialized. Please deposit SOL first.")
+          return
+        }
+
+        const driftManager = getDriftPositionManager()
+        console.log("[Game] Initializing Drift Protocol...")
+        await driftManager.initialize(keypair)
+        console.log("[Game] ✅ Drift Protocol initialized")
+      } catch (error) {
+        console.error("[Game] Failed to initialize Drift:", error)
+        alert("Failed to initialize trading system. Please try again.")
+        return
+      }
+    }
+
+    startGame(mode)
+  }, [startGame])
+
+  // If setup is not complete, show the setup screen
+  if (setupPhase !== "playing") {
+    return <GameSetupScreen onStartGame={handleStartGame} />
+  }
 
   const setHoverStone = useCallback(
     (value: HoverStone | null | ((prev: HoverStone | null) => HoverStone | null)) => {
@@ -537,52 +608,54 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     [syncTowerOffset],
   )
 
-  // Track the forming 30-second candle
-  const formingCandleRef = useRef<Candle | null>(null)
-  const formingCandleTicksRef = useRef<number>(0)
-
-  const getNextTickAndUpdateFormingCandle = useCallback((stance: Stance = "flat") => {
-    // Get the next 1-second candle (tick)
-    const tick = candleSourceRef.current.next()
+  const getNextCandleAndFeatures = useCallback((stance: Stance = "flat") => {
+    if (!candleSourceRef.current) {
+      throw new Error("Candle source not initialized")
+    }
+    // Get the next 1-second candle
+    const candle = candleSourceRef.current.next()
     const provider = candleSourceRef.current.getSource()
     setDataProvider(provider)
 
-    // Initialize or update the forming 30-second candle
-    if (!formingCandleRef.current || formingCandleTicksRef.current === 0) {
-      // Start a new forming candle with this tick's open price
-      formingCandleRef.current = {
-        timestamp: tick.timestamp,
-        open: tick.open,
-        high: tick.high,
-        low: tick.low,
-        close: tick.close,
-        volume: tick.volume,
-      }
-      formingCandleTicksRef.current = 1
-    } else {
-      // Update the forming candle with new tick data
-      formingCandleRef.current = {
-        ...formingCandleRef.current,
-        high: Math.max(formingCandleRef.current.high, tick.high),
-        low: Math.min(formingCandleRef.current.low, tick.low),
-        close: tick.close, // Most recent close
-        volume: formingCandleRef.current.volume + tick.volume,
-      }
-      formingCandleTicksRef.current++
-    }
+    // Update current candle in game state for UI display
+    useGameState.setState({ currentCandle: candle })
 
-    // Use the tick data for features calculation (keeps stone responsive to each second)
-    const evaluation = computeFeatures(featureStateRef.current, tick)
+    // Use candle data for features calculation
+    const evaluation = computeFeatures(featureStateRef.current, candle)
     featureStateRef.current = evaluation.state
     lastFeaturesRef.current = evaluation.features
-    const visual = featuresToStoneVisual(evaluation.features, tick.timestamp, stance)
+    const visual = featuresToStoneVisual(evaluation.features, candle.timestamp, stance)
 
-    return { candle: formingCandleRef.current, tick, evaluation, visual }
+    return { candle, evaluation, visual }
   }, [setDataProvider])
 
   const consumeNextCandleVisual = useCallback((stance: Stance = "flat") => {
+    if (!candleSourceRef.current) {
+      throw new Error("Candle source not initialized")
+    }
     const candle = candleSourceRef.current.next()
     const provider = candleSourceRef.current.getSource()
+
+    // Validate candle has valid price data
+    if (!candle || !Number.isFinite(candle.close) || candle.close <= 0) {
+      console.warn("[Game] Invalid candle data, using fallback:", candle)
+      // Return a safe fallback
+      const fallbackCandle = {
+        timestamp: Date.now(),
+        open: 163,
+        high: 163,
+        low: 163,
+        close: 163,
+        volume: 0,
+      }
+      const evaluation = computeFeatures(featureStateRef.current, fallbackCandle)
+      featureStateRef.current = evaluation.state
+      lastFeaturesRef.current = evaluation.features
+      const visual = featuresToStoneVisual(evaluation.features, fallbackCandle.timestamp, stance)
+      setDataProvider(provider)
+      return { candle: fallbackCandle, evaluation, visual }
+    }
+
     setDataProvider(provider)
     const evaluation = computeFeatures(featureStateRef.current, candle)
     featureStateRef.current = evaluation.state
@@ -658,6 +731,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     const finalHover = hoverStoneRef.current
     if (!finalHover) return
 
+    console.log("[HoverStone] Setting hover stone to null (placement)")
     hoverStoneRef.current = null
     setHoverStone(null)
     stoneSequenceRef.current += 1
@@ -851,14 +925,16 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
       anchor: placing.anchored,
       supportTargetX: supportFrame.supportPoint.x,
     })
+    if (!addedStone) {
+      console.warn("[Game] Could not create physics body for placed stone; skipping placement")
+      setPhase("hovering")
+      setCanDecide(true)
+      prepareHoverStone()
+      return
+    }
     // Register P&L with the FINAL stance (after user's decision)
     if (placing.candle) {
       accountState.registerCandle(placing.candle, placing.stance)
-      // Add completed 30-second candle to chart history
-      addCandleToHistory(placing.candle)
-      // Reset the forming candle tracker for the next stone
-      formingCandleRef.current = null
-      formingCandleTicksRef.current = 0
     }
 
     // Precisely seat the stone on the support frame
@@ -887,7 +963,6 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
     setPlacingStone,
     updateStackReferences,
     accountState,
-    addCandleToHistory,
   ])
 
   const triggerLossEvent = useCallback(
@@ -1049,6 +1124,10 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
               anchor: trapezoid.anchored,
               supportTargetX: support.supportPoint.x,
             })
+            if (!stone) {
+              console.warn("[Loss Event] Failed to respawn stone; skipping entry")
+              continue
+            }
 
             engine.setStoneStatic(stone, true)
             // Use the isFlipped flag we already computed above
@@ -1255,8 +1334,29 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    if (initializedRef.current) return
+    // Only initialize when setup is complete
+    if (setupPhase !== "playing") {
+      console.log("[Game] Waiting for setup to complete before initializing")
+      return
+    }
+    if (initializedRef.current) {
+      console.log("[Game] Skipping initialization - already initialized")
+      return
+    }
     initializedRef.current = true
+    console.log("[Game] Initializing game engine and candle source")
+
+    // Initialize candle source (only in browser and after setup)
+    if (!candleSourceRef.current) {
+      candleSourceRef.current = createCandleSource()
+      const sourceType = candleSourceRef.current?.getSource()
+      console.log("[Game] Created candle source:", sourceType)
+      setDataProvider(sourceType || "mock")
+    } else {
+      const sourceType = candleSourceRef.current?.getSource()
+      console.log("[Game] Reusing existing candle source:", sourceType)
+      setDataProvider(sourceType || "mock")
+    }
 
     const engine = new PhysicsEngine(CANVAS_WIDTH, CANVAS_HEIGHT, DEFAULT_CONFIG.gravity)
     engineRef.current = engine
@@ -1328,6 +1428,10 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
           anchor: trapezoid.anchored,
           supportTargetX: support.supportPoint.x,
         })
+        if (!stone) {
+          console.warn("[Game] Failed to create initial tower stone; skipping")
+          continue
+        }
 
         engine.setStoneStatic(stone, true)
         // Use the isFlipped flag we already computed above
@@ -1458,9 +1562,17 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
       dropTimerCleanup()
       initializedRef.current = false
       engine.clear()
+
+      // Cleanup WebSocket connection if using RealtimeWebsocketSource
+      const source = candleSourceRef.current
+      if (source && 'disconnect' in source && typeof source.disconnect === 'function') {
+        console.log("[Game] Disconnecting candle source on cleanup")
+        source.disconnect()
+        candleSourceRef.current = null
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [triggerLossEvent])
+  }, [setupPhase, triggerLossEvent])
 
   useEffect(() => {
     if (phase === "hovering") {
@@ -1483,15 +1595,12 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
       const elapsed = now - hoverModulationTimerRef.current
 
       if (elapsed >= MODULATION_INTERVAL && hover.updatesApplied < hover.maxUpdates) {
+        console.log(`[HoverStone] Updating hover stone (${hover.updatesApplied + 1}/${hover.maxUpdates})`)
         const accountState = useAccountState.getState()
         let targetStance = hover.stance
 
-        // Get next tick and update the forming 30-second candle
-        // This aggregates 1-second ticks into a forming 30-second candle
-        const { candle, evaluation, visual } = getNextTickAndUpdateFormingCandle(hover.stance)
-
-        // Update the current candle for the chart (shows the forming 30s candle with updated OHLC)
-        updateCurrentCandle(candle)
+        // Get next 1-second candle
+        const { candle, evaluation, visual } = getNextCandleAndFeatures(hover.stance)
 
         // Calculate market direction for both auto-align and tower lean compensation
         const marketDirection = computeMarketDirection(evaluation.features)
@@ -1523,6 +1632,17 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
           if (targetStance !== hover.stance) {
             setHoverStance(targetStance)
             console.log(`[Auto-Align] Flipped stance to ${targetStance} (direction: ${marketDirection.toFixed(3)}, conviction: ${conviction.toFixed(3)}, momentum: ${evaluation.features.momentum.toFixed(2)}, order: ${evaluation.features.orderImbalance.toFixed(2)}, volume: ${evaluation.features.volume.toFixed(2)}, volatility: ${evaluation.features.volatility.toFixed(2)})`)
+          }
+
+          // Notify trading controller of stance change (for real trades)
+          if (targetStance !== lastTradingStanceRef.current && candle && Number.isFinite(candle.close)) {
+            const tradingController = tradingControllerRef.current
+            const unrealizedPnl = useGameState.getState().unrealizedPnl
+            tradingController.onStanceChange(targetStance, candle.close, conviction, unrealizedPnl).catch((error) => {
+              console.error("[Trading] Failed to execute stance change:", error)
+            })
+            lastTradingStanceRef.current = targetStance
+            console.log(`[Trading] Stance change sent to trading controller: ${targetStance} @ $${candle.close.toFixed(2)} (conviction: ${(conviction * 100).toFixed(0)}%)`)
           }
         }
 
@@ -1575,7 +1695,14 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
           // We want positive towerLean when left is high, so: rightHighestY - leftHighestY
           // If left high: leftY < rightY → rightY - leftY = positive
           // If right high: rightY < leftY → rightY - leftY = negative
-          towerLean = rightHighestY - leftHighestY
+
+          // Safety check: only calculate if we found vertices on both sides
+          if (leftHighestY !== Infinity && rightHighestY !== Infinity) {
+            towerLean = rightHighestY - leftHighestY
+          } else {
+            console.warn("[TowerLean] Could not find vertices on both sides, defaulting to 0")
+            towerLean = 0
+          }
         }
 
         // STONE SHAPE COMPENSATION FOR TOWER LEAN
@@ -1627,14 +1754,19 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
 
         // Debug logging - ALWAYS log for now to debug (only on client with valid data)
         if (typeof window !== 'undefined' && visual?.geometry?.beta !== undefined) {
+          const safeTowerLean = Number.isFinite(towerLean) ? towerLean.toFixed(3) : 'NaN'
+          const safeMarketDirection = Number.isFinite(marketDirection) ? marketDirection.toFixed(3) : 'NaN'
+          const safeBeta = Number.isFinite(visual.geometry.beta) ? visual.geometry.beta.toFixed(3) : 'NaN'
+          const safeAdjustedBeta = Number.isFinite(adjustedGeometry.beta) ? adjustedGeometry.beta.toFixed(3) : 'NaN'
+
           console.log('[Tower Compensation]', {
-            towerLean: towerLean.toFixed(3),
+            towerLean: safeTowerLean,
             highSide: towerLean > 0 ? 'LEFT' : towerLean < 0 ? 'RIGHT' : 'NONE',
-            marketDirection: marketDirection.toFixed(3),
+            marketDirection: safeMarketDirection,
             marketType: marketDirection > 0.15 ? 'BULLISH' : marketDirection < -0.15 ? 'BEARISH' : 'NEUTRAL',
-            originalBeta: visual.geometry.beta.toFixed(3),
+            originalBeta: safeBeta,
             originalFatSide: visual.geometry.beta > 0 ? 'LEFT' : visual.geometry.beta < 0 ? 'RIGHT' : 'NONE',
-            adjustedBeta: adjustedGeometry.beta.toFixed(3),
+            adjustedBeta: safeAdjustedBeta,
             adjustedFatSide: adjustedGeometry.beta > 0 ? 'LEFT' : adjustedGeometry.beta < 0 ? 'RIGHT' : 'NONE',
             inverted: shouldInvertGeometry,
             targetStance,
@@ -1763,7 +1895,10 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
         }
 
         setHoverStone((prev) => {
-          if (!prev) return prev
+          if (!prev) {
+            console.warn("[HoverStone] Hover stone is null during transition update")
+            return prev
+          }
           return {
             ...prev,
             localVertices: interpLocalVertices,
@@ -1790,7 +1925,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
 
     const interval = setInterval(modulateHover, 16)
     return () => clearInterval(interval)
-  }, [phase, getNextTickAndUpdateFormingCandle, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators, updateCurrentCandle])
+  }, [phase, getNextCandleAndFeatures, setLatestFeatures, setHoverStone, applyAlignmentSample, updateForceIndicators])
 
   // Check for loss events based on equity drawdown (includes unrealized P&L)
   // Subscribe to equity changes from account state
@@ -1839,6 +1974,15 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
       triggerLossEvent(hoverStance ?? DEFAULT_STANCE, stonesToLoseNow, severity)
     }
   }, [phase, stonesPlaced, triggerLossEvent, hoverStance, equity, peakEquity, accountState])
+
+  // Render Doom Runner experience using the same underlying market alignment state
+  if (experienceMode === "doomrunner") {
+    return (
+      <div ref={containerRef} className="relative h-full w-full touch-none">
+        <DoomRunnerExperience isMobile={isMobile} />
+      </div>
+    )
+  }
 
   // Mobile: responsive wrapper with aspect ratio
   // Desktop: fixed size container

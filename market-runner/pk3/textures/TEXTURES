@@ -1,0 +1,9 @@
+texture MRWALL, 128, 128
+{
+  patch "textures/freedoom-brick", 0, 0
+}
+
+flat MRFLAT, 64, 64
+{
+  patch "textures/freedoom-floor", 0, 0
+}

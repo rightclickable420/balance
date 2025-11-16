@@ -1,0 +1,3 @@
+This is a placeholder to keep the repo structure obvious.
+
+To create a usable PK3, zip everything inside the `pk3/` directory (not the folder itself) so the archive root contains MAPINFO, KEYCONF, etc., then rename the resulting archive to `market-runner.pk3`.
