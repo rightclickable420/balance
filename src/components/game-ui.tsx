@@ -69,6 +69,7 @@ interface GameUIProps {
 }
 
 export function GameUI({ isMobile = false }: GameUIProps = {}) {
+  // IMPORTANT: All hooks must be called BEFORE any conditional returns
   const {
     setupPhase,
     experienceMode,
@@ -90,12 +91,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     realizedPnl,
   } = useGameState()
 
-  // Don't render GameUI during setup - do this BEFORE any other logic
-  if (setupPhase !== "playing") {
-    return null
-  }
-
-  // Separate selector for currentCandle to ensure re-renders
+  // Additional state selectors
   const currentCandle = useGameState((state) => state.currentCandle)
   const gameMode = useGameState((state) => state.gameMode)
   const sessionWalletBalance = useGameState((state) => state.sessionWalletBalance)
@@ -104,17 +100,9 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
   const tradingLeverage = useGameState((state) => state.tradingLeverage)
   const tradingStrategy = useGameState((state) => state.tradingStrategy)
 
-  // Use real balance in real mode, mock balance in mock mode
   const mockAccountBalance = useAccountState((state) => state.balance)
   const mockEquity = useAccountState((state) => state.equity)
-  const balance = gameMode === "real" ? sessionWalletBalance : mockAccountBalance
-  const equity = gameMode === "real" ? sessionWalletBalance + unrealizedPnl : mockEquity
-
-  // Calculate total PnL as difference from starting balance
-  const startingBalance = gameMode === "real" ? startingRealBalance : mockBalance
-  const totalPnl = balance - startingBalance
-
-  const leverage = useAccountState ((state) => state.leverage)
+  const leverage = useAccountState((state) => state.leverage)
   const setLeverage = useAccountState((state) => state.setLeverage)
   const autoAlign = useAccountState((state) => state.autoAlign)
   const setAutoAlign = useAccountState((state) => state.setAutoAlign)
@@ -122,11 +110,19 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
 
   const [realTradingEnabled, setRealTradingEnabled] = useState(false)
   const [tradingMetrics, setTradingMetrics] = useState<ReturnType<typeof tradingController.getMetrics> | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
 
   const tradingController = getTradingController()
 
+  // Calculate derived values (before early return)
+  const balance = gameMode === "real" ? sessionWalletBalance : mockAccountBalance
+  const equity = gameMode === "real" ? sessionWalletBalance + unrealizedPnl : mockEquity
+  const startingBalance = gameMode === "real" ? startingRealBalance : mockBalance
+  const totalPnl = balance - startingBalance
+
   // Auto-enable real trading when in real mode
   useEffect(() => {
+    if (setupPhase !== "playing") return // Skip effects during setup
     if (gameMode === "real" && !realTradingEnabled) {
       tradingController.enable()
       setRealTradingEnabled(true)
@@ -136,20 +132,11 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
       setRealTradingEnabled(false)
       console.log("[GameUI] Real trading auto-disabled (mock mode)")
     }
-  }, [gameMode, realTradingEnabled, tradingController])
-
-  const handleToggleRealTrading = () => {
-    if (realTradingEnabled) {
-      tradingController.disable()
-      setRealTradingEnabled(false)
-    } else {
-      tradingController.enable()
-      setRealTradingEnabled(true)
-    }
-  }
+  }, [gameMode, realTradingEnabled, tradingController, setupPhase])
 
   // Update trading metrics every second when real trading is enabled
   useEffect(() => {
+    if (setupPhase !== "playing") return // Skip effects during setup
     if (!realTradingEnabled) {
       setTradingMetrics(null)
       return
@@ -163,26 +150,39 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     const interval = setInterval(updateMetrics, 1000)
 
     return () => clearInterval(interval)
-  }, [realTradingEnabled, tradingController])
-
-  console.log(
-    `[v0] GameUI render - stones: ${stonesPlaced}, phase: ${phase}, canDecide: ${canDecide}, stance: ${hoverStance}, energyPhase: ${energyPhase}`,
-  )
+  }, [realTradingEnabled, tradingController, setupPhase])
 
   // Test if basic JavaScript works (only on client side)
   useEffect(() => {
+    if (setupPhase !== "playing") return // Skip effects during setup
     if (typeof window !== 'undefined' && typeof document !== 'undefined') {
       try {
-        document.title = `Balance - Stones: ${stonesPlaced}`
-        console.log(`[v0] Title set to: Balance - Stones: ${stonesPlaced}`)
+        document.title = `Doom Runner - Stones: ${stonesPlaced}`
+        console.log(`[GameUI] Title set to: Doom Runner - Stones: ${stonesPlaced}`)
       } catch (error) {
-        console.error("[v0] Failed to set title:", error)
+        console.error("[GameUI] Failed to set title:", error)
       }
     }
-  }, [stonesPlaced])
+  }, [stonesPlaced, setupPhase])
 
-  // Mobile settings state - must be at top level (React hooks rule)
-  const [showSettings, setShowSettings] = useState(false)
+  // Early return AFTER all hooks
+  if (setupPhase !== "playing") {
+    return null
+  }
+
+  console.log(
+    `[GameUI] render - stones: ${stonesPlaced}, phase: ${phase}, canDecide: ${canDecide}, stance: ${hoverStance}, energyPhase: ${energyPhase}`,
+  )
+
+  const handleToggleRealTrading = () => {
+    if (realTradingEnabled) {
+      tradingController.disable()
+      setRealTradingEnabled(false)
+    } else {
+      tradingController.enable()
+      setRealTradingEnabled(true)
+    }
+  }
 
   const progressWidth = clamp01(decisionProgress)
   const providerDisplay = (() => {

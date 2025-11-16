@@ -11,11 +11,11 @@ export default function Home() {
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-gradient-to-b from-[#0a0a0f] via-[#12121a] to-[#1a1a28] flex items-center justify-center">
-      {/* During setup, show only the setup screen */}
+      {/* GameContainer handles both setup and Doom Runner rendering */}
       {setupPhase !== "playing" ? (
         <GameContainer isMobile={isMobile} />
       ) : (
-        /* During gameplay, full viewport layout */
+        /* During gameplay, full viewport with HUD overlay */
         <div className="relative w-full h-full">
           <GameContainer isMobile={isMobile} />
           <GameUI isMobile={isMobile} />
