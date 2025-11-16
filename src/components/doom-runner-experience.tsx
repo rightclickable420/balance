@@ -4,13 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useGameState, type Stance } from "@/lib/game/game-state"
 import { useAccountState } from "@/lib/game/account-state"
 import { GzdoomRunner, type DoomRunnerBridge } from "./gzdoom-runner"
+import { computeMarketDirection, computeMarketConviction } from "@/lib/game/alignment"
+import type { TradingStrategy } from "@/lib/trading/trading-controller"
 
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value))
-const STANCE_TO_ALIGN: Record<Stance, 0 | 1 | 2> = {
-  flat: 0,
-  long: 1,
-  short: 2,
-}
 
 export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean }) {
   const {
@@ -23,11 +20,13 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
     stonesPlaced,
     dataProvider,
     latestFeatures,
+    tradingStrategy,
   } = useGameState()
   const setSetupPhase = useGameState((state) => state.setSetupPhase)
   const setExperienceMode = useGameState((state) => state.setExperienceMode)
   const resetGame = useGameState((state) => state.reset)
   const hoverStance = useGameState((state) => state.hoverStance)
+  const setHoverStance = useGameState((state) => state.setHoverStance)
   const autoAlign = useAccountState((state) => state.autoAlign)
   const equity = useAccountState((state) => state.equity)
   const balance = useAccountState((state) => state.balance)
@@ -98,6 +97,54 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
       autoModeRef.current = false
     }
   }, [engineReady])
+
+  // Auto-align decision logic - updates stance based on market features and strategy
+  useEffect(() => {
+    if (!autoAlign || !latestFeatures) {
+      // Manual mode or no data - keep current stance
+      return
+    }
+
+    // Compute market signals
+    const direction = computeMarketDirection(latestFeatures)
+    const conviction = computeMarketConviction(latestFeatures)
+
+    // Strategy-specific conviction thresholds
+    const convictionThreshold = (() => {
+      switch (tradingStrategy as TradingStrategy) {
+        case "conservative":
+          return 0.7 // Only trade on very high conviction
+        case "balanced":
+          return 0.5 // Default threshold
+        case "aggressive":
+          return 0.3 // Trade on lower conviction
+        case "manual":
+          return 1.0 // Never auto-trade (manual only)
+        default:
+          return 0.5
+      }
+    })()
+
+    // Determine stance based on direction and conviction
+    let newStance: Stance = "flat"
+
+    if (conviction >= convictionThreshold) {
+      // High conviction - take directional stance
+      if (direction > 0.15) {
+        newStance = "long"
+      } else if (direction < -0.15) {
+        newStance = "short"
+      }
+      // else: weak direction, stay flat
+    }
+    // else: low conviction, stay flat
+
+    // Update stance if changed
+    if (newStance !== hoverStance) {
+      console.log(`[AutoAlign] ${hoverStance} → ${newStance} (direction: ${direction.toFixed(2)}, conviction: ${conviction.toFixed(2)}, threshold: ${convictionThreshold.toFixed(2)})`)
+      setHoverStance(newStance)
+    }
+  }, [autoAlign, latestFeatures, tradingStrategy, hoverStance, setHoverStance])
 
   // Old console command approach - replaced by laneTarget prop
   // useEffect(() => {

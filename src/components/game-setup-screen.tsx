@@ -23,8 +23,8 @@ const DEFAULT_DEPOSIT = 0.1 // SOL - recommended starting amount
 
 export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
   const { connected, publicKey, signMessage, sendTransaction } = useWallet()
-  const experienceMode = useGameState((state) => state.experienceMode)
-  const setExperienceMode = useGameState((state) => state.setExperienceMode)
+  // Always use Doom Runner mode (Balance game removed)
+  const experienceMode = "doomrunner"
   const [selectedMode, setSelectedMode] = useState<"mock" | "real">("mock")
   const [depositAmount, setDepositAmount] = useState<string>(DEFAULT_DEPOSIT.toString())
   const [isDepositing, setIsDepositing] = useState(false)
@@ -465,72 +465,7 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
 
         {/* Setup Card */}
         <div className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-2xl p-8 space-y-6">
-          {/* Experience Selection */}
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-white text-xl font-bold mb-1">Choose Your Experience</h2>
-              <p className="text-gray-400 text-sm">
-                Stay inside the Balance stacker or launch the Doom Runner PK3 toolkit
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <button
-                onClick={() => setExperienceMode("balance")}
-                className={`p-6 rounded-xl border-2 text-left transition-all ${
-                  experienceMode === "balance"
-                    ? "border-cyan-500 bg-cyan-500/10 shadow-[0_0_35px_rgba(6,182,212,0.35)]"
-                    : "border-white/10 bg-black/20 hover:border-white/20"
-                }`}
-              >
-                <div className="space-y-2">
-                  <div className="text-sm uppercase tracking-wide text-cyan-400 font-semibold">Balance</div>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-white text-2xl font-black">Stone Stacker</h3>
-                    <div className="text-3xl">🪨</div>
-                  </div>
-                  <p className="text-gray-400 text-sm">
-                    Build the tower inside the browser with real-time market data and Drift integration.
-                  </p>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="px-2 py-1 rounded bg-cyan-500/20 text-cyan-200">Mock or Real trading</span>
-                    <span className="px-2 py-1 rounded bg-cyan-500/20 text-cyan-200">Physics sandbox</span>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setExperienceMode("doomrunner")}
-                className={`p-6 rounded-xl border-2 text-left transition-all ${
-                  experienceMode === "doomrunner"
-                    ? "border-purple-500 bg-purple-500/10 shadow-[0_0_35px_rgba(168,85,247,0.35)]"
-                    : "border-white/10 bg-black/20 hover:border-white/20"
-                }`}
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm uppercase tracking-wide text-purple-300 font-semibold">
-                    Doom Runner
-                    <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-100 text-[10px]">New</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-white text-2xl font-black">Web Corridor</h3>
-                    <div className="text-3xl">💀</div>
-                  </div>
-                  <p className="text-gray-400 text-sm">
-                    Sprint through the infinite corridor alignment runner rendered directly inside this session.
-                  </p>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="px-2 py-1 rounded bg-purple-500/20 text-purple-100">In-browser</span>
-                    <span className="px-2 py-1 rounded bg-purple-500/20 text-purple-100">Shared trading</span>
-                    <span className="px-2 py-1 rounded bg-purple-500/20 text-purple-100">PK3 optional</span>
-                  </div>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          <div className="h-px bg-white/10" />
-
+          {/* Doom Runner Mode (Balance mode removed) */}
           {experienceMode === "doomrunner" && (
             <div className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4 text-sm text-purple-100/90 leading-relaxed space-y-2">
               <p>
