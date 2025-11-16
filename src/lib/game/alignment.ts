@@ -1,6 +1,8 @@
 import type { Features } from "@/lib/data/features"
 import type { Stance } from "./game-state"
-import { clamp } from "./math"
+
+// Utility function (math.ts was removed with Balance game)
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
 const ALIGNMENT_DECAY = 0.92
 const ALIGNMENT_GAIN = 0.35
