@@ -1,5 +1,11 @@
 import type { Candle } from "@/lib/types"
-import { clamp, clamp01, ensurePositive, sigmoid, tanhSafe } from "@/lib/game/math"
+
+// Utility functions (math.ts was removed with Balance game)
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+const clamp01 = (value: number) => clamp(value, 0, 1)
+const ensurePositive = (value: number) => Math.max(value, 1e-10)
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x))
+const tanhSafe = (x: number) => Math.tanh(clamp(x, -10, 10))
 
 export interface Features {
   momentum: number // -1..1
