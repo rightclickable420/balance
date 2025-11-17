@@ -303,7 +303,6 @@ export class TradingController {
     this.isProcessing = true
 
     try {
-      const driftManager = getDriftPositionManager()
 
       // Close existing position if we have one
       if (this.activePosition) {

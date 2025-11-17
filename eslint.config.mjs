@@ -18,6 +18,11 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "aggregator-service/**",
+      "public/gzdoom-runner/**",
+      "public/gzdoom-shell.js",
+      "scripts/prboom-web/**",
+      "webpack-compat/**",
     ],
   },
 ];

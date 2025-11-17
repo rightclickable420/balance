@@ -3,18 +3,18 @@
 import { useWallet } from "@solana/wallet-adapter-react"
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui"
 import { useEffect, useState } from "react"
-import { getSessionWallet, type PositionBackup, SESSION_WALLET_SIGNATURE_MESSAGE } from "@/lib/wallet/session-wallet"
+import { getSessionWallet, type PositionBackup } from "@/lib/wallet/session-wallet"
 import { useGameState } from "@/lib/game/game-state"
 import { LAMPORTS_PER_SOL, SystemProgram, Transaction } from "@solana/web3.js"
 import { useConnection } from "@solana/wallet-adapter-react"
-import { getDriftPositionManager, type Position as DriftPosition } from "@/lib/trading/drift-position-manager"
+import { getDriftPositionManager } from "@/lib/trading/drift-position-manager"
 
 export function WalletConnectButton() {
-  const { publicKey, connected, sendTransaction, signMessage } = useWallet()
+  const { publicKey, connected } = useWallet()
   const { connection } = useConnection()
   const [mounted, setMounted] = useState(false)
   const [sessionActive, setSessionActive] = useState(false)
-  const [driftInitialized, setDriftInitialized] = useState(false)
+  const [driftInitialized] = useState(false)
   const [showPositionsWarning, setShowPositionsWarning] = useState(false)
   const [recoveredPositions, setRecoveredPositions] = useState<PositionBackup[]>([])
   const [currentPositions, setCurrentPositions] = useState<PositionBackup[]>([])
@@ -27,22 +27,6 @@ export function WalletConnectButton() {
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  // Generate encryption key from wallet signature
-  // CRITICAL: Must use same message as recovery for deterministic signature
-  const getEncryptionKey = async (): Promise<Uint8Array | null> => {
-    if (!publicKey || !signMessage) return null
-
-    try {
-      const message = new TextEncoder().encode(SESSION_WALLET_SIGNATURE_MESSAGE)
-      const signature = await signMessage(message)
-      // Use first 32 bytes of signature as encryption key
-      return signature.slice(0, 32)
-    } catch (error) {
-      console.error("[WalletConnect] Failed to get encryption key:", error)
-      return null
-    }
-  }
 
   // Check for existing session - setup screen handles recovery and creation
   useEffect(() => {
@@ -67,31 +51,6 @@ export function WalletConnectButton() {
       console.log("[WalletConnect] No session found, waiting for deposit to create one")
     }
   }, [connected, publicKey, sessionActive])
-
-  const initializeNewSession = async () => {
-    const sessionWallet = getSessionWallet()
-    const encryptionKey = await getEncryptionKey()
-
-    if (!encryptionKey) {
-      console.error("[WalletConnect] Failed to get encryption key")
-      return
-    }
-
-    const { publicKey: sessionPubKey } = await sessionWallet.generateSession(encryptionKey)
-
-    useGameState.setState({
-      sessionWalletPublicKey: sessionPubKey,
-    })
-
-    setSessionActive(true)
-    console.log("[WalletConnect] Session wallet created:", sessionPubKey.toBase58())
-
-    // NOTE: Drift initialization is deferred until after user deposits funds
-    // This happens in game-container.tsx when user starts real trading mode
-    // The session wallet needs SOL for account creation rent (~0.01 SOL)
-    console.log("[WalletConnect] Session created. Deposit SOL to enable Drift trading.")
-  }
-
 
   const handleCloseAllPositions = async () => {
     if (!sessionWalletPublicKey || recoveredPositions.length === 0) return

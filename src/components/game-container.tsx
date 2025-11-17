@@ -9,11 +9,7 @@ import { getTradingController } from "@/lib/trading/trading-controller"
 import { getDriftPositionManager } from "@/lib/trading/drift-position-manager"
 import { getSessionWallet } from "@/lib/wallet/session-wallet"
 
-interface GameContainerProps {
-  isMobile?: boolean
-}
-
-export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
+export function GameContainer() {
   const { setupPhase, startGame } = useGameState()
 
   // Handler for starting the game from setup screen
@@ -79,7 +75,7 @@ export function GameContainer({ isMobile = false }: GameContainerProps = {}) {
   // Render Doom Runner experience
   return (
     <div className="relative h-full w-full touch-none">
-      <DoomRunnerExperience isMobile={isMobile} />
+      <DoomRunnerExperience />
     </div>
   )
 }

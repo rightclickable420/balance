@@ -6,7 +6,6 @@ import { useWallet } from "@solana/wallet-adapter-react"
 import { Connection, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
 import { getSessionWallet, SESSION_WALLET_SIGNATURE_MESSAGE } from "@/lib/wallet/session-wallet"
 import { STRATEGY_PRESETS, type TradingStrategy } from "@/lib/trading/trading-controller"
-import { useGameState } from "@/lib/game/game-state"
 
 interface GameSetupScreenProps {
   onStartGame: (mode: "mock" | "real", strategy?: TradingStrategy, leverage?: number) => void

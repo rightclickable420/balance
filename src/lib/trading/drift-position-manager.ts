@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL, Transaction } from "@solana/web3.js"
+import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL, Transaction, VersionedTransaction } from "@solana/web3.js"
 import {
   DriftClient,
   User,
@@ -10,8 +10,6 @@ import {
   BASE_PRECISION,
   PRICE_PRECISION,
   QUOTE_PRECISION,
-  PerpMarkets,
-  SpotMarkets,
   ReferrerInfo,
   getUserAccountPublicKey,
 } from "@drift-labs/sdk"
@@ -146,10 +144,9 @@ export class DriftPositionManager {
       )
 
       // Create wallet from session keypair
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wallet = {
         publicKey: sessionKeypair.publicKey,
-        signTransaction: async (tx: any) => {
+        signTransaction: async (tx: Transaction | VersionedTransaction) => {
           // Handle both legacy Transaction and VersionedTransaction
           if ('partialSign' in tx) {
             // Legacy Transaction
@@ -160,7 +157,7 @@ export class DriftPositionManager {
           }
           return tx
         },
-        signAllTransactions: async (txs: any[]) => {
+        signAllTransactions: async (txs: (Transaction | VersionedTransaction)[]) => {
           txs.forEach((tx) => {
             if ('partialSign' in tx) {
               tx.partialSign(sessionKeypair)

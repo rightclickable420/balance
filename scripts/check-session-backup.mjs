@@ -15,7 +15,7 @@ if (sessionBackup) {
     console.log('   Timestamp:', new Date(parsed.timestamp).toLocaleString())
     console.log('   Age:', Math.floor((Date.now() - parsed.timestamp) / 1000 / 60), 'minutes old')
   } catch (e) {
-    console.log('⚠️ sessionStorage backup exists but is corrupted')
+    console.log('⚠️ sessionStorage backup exists but is corrupted', e)
   }
 } else {
   console.log('❌ No backup in sessionStorage')
@@ -31,7 +31,7 @@ if (persistentBackup) {
     console.log('   Timestamp:', new Date(parsed.timestamp).toLocaleString())
     console.log('   Age:', Math.floor((Date.now() - parsed.timestamp) / 1000 / 60), 'minutes old')
   } catch (e) {
-    console.log('⚠️ localStorage backup exists but is corrupted')
+    console.log('⚠️ localStorage backup exists but is corrupted', e)
   }
 } else {
   console.log('❌ No backup in localStorage')

@@ -12,22 +12,8 @@ import type { CandleSource, Candle } from "@/lib/types"
 
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value))
 
-export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean }) {
-  const {
-    decisionProgress,
-    energyPhase,
-    energyBudget,
-    alignmentVelocity,
-    phase,
-    score,
-    stonesPlaced,
-    dataProvider,
-    latestFeatures,
-    tradingStrategy,
-  } = useGameState()
-  const setSetupPhase = useGameState((state) => state.setSetupPhase)
-  const setExperienceMode = useGameState((state) => state.setExperienceMode)
-  const resetGame = useGameState((state) => state.reset)
+export function DoomRunnerExperience() {
+  const { latestFeatures, tradingStrategy } = useGameState()
   const hoverStance = useGameState((state) => state.hoverStance)
   const setHoverStance = useGameState((state) => state.setHoverStance)
   const autoAlign = useAccountState((state) => state.autoAlign)
@@ -35,8 +21,6 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
   const balance = useAccountState((state) => state.balance)
   const peakEquity = useAccountState((state) => state.peakEquity)
   const lastPrice = useAccountState((state) => state.lastPrice)
-  const resetAccount = useAccountState((state) => state.reset)
-  const setAutoAlignToggle = useAccountState((state) => state.setAutoAlign)
 
   // Data source refs
   const dataSourceRef = useRef<CandleSource | null>(null)
@@ -48,8 +32,6 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
     return clamp(equity / peakEquity, 0, 1)
   }, [equity, peakEquity])
 
-  const beatProgress = clamp(decisionProgress ?? 0)
-  const alignmentMomentum = Number.isFinite(alignmentVelocity) ? alignmentVelocity : 0
   const laneTarget = useMemo(() => {
     switch (hoverStance) {
       case "long":
@@ -64,7 +46,6 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
   const bridgeRef = useRef<DoomRunnerBridge | null>(null)
   const autoModeRef = useRef(false)
   const lastAlignRef = useRef<Stance | null>(null)
-  const lastSigmaRef = useRef<number | null>(null)
   const lastLossRef = useRef<number | null>(null)
   const [engineReady, setEngineReady] = useState(false)
   const pendingCommandsRef = useRef<string[]>([])
@@ -98,7 +79,6 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
   useEffect(() => {
     if (engineReady) {
       lastAlignRef.current = null
-      lastSigmaRef.current = null
       lastLossRef.current = null
     } else {
       autoModeRef.current = false
@@ -281,22 +261,9 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
   //   lastAlignRef.current = stance
   // }, [engineReady, hoverStance, sendCommand])
 
-  const sigmaPercent = useMemo(() => {
-    const normalized = clamp(Math.abs(alignmentMomentum) / 1.5, 0, 1)
-    return Math.round(normalized * 100)
-  }, [alignmentMomentum])
-
   const lossPercent = useMemo(() => {
     return Math.round(clamp(1 - hpPct, 0, 1) * 100)
   }, [hpPct])
-
-  // Old console command approach - no longer needed
-  // useEffect(() => {
-  //   if (!engineReady) return
-  //   if (lastSigmaRef.current === sigmaPercent) return
-  //   sendCommand(`pukename MR_SetSigma ${sigmaPercent}`)
-  //   lastSigmaRef.current = sigmaPercent
-  // }, [engineReady, sigmaPercent, sendCommand])
 
   useEffect(() => {
     if (!engineReady) return
@@ -394,15 +361,6 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
       }
     }
   }, [equity, balance, lastPrice, latestFeatures, engineReady])
-
-  const handleBackToSetup = useCallback(() => {
-    bridgeRef.current?.shutdown()
-    setAutoAlignToggle(false)
-    resetAccount()
-    resetGame()
-    setExperienceMode("balance")
-    setSetupPhase("in_setup")
-  }, [resetAccount, resetGame, setAutoAlignToggle, setExperienceMode, setSetupPhase])
 
   return (
     <div className="relative h-full w-full">

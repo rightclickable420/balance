@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useGameState, type GameMode, type GamePhase, type Stance } from "@/lib/game/game-state"
+import { useGameState, type GameMode, type Stance } from "@/lib/game/game-state"
 import { useAccountState } from "@/lib/game/account-state"
 import type { Features } from "@/lib/data/features"
 import { WalletConnectButton } from "./wallet-connect-button"
@@ -110,7 +110,6 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
 
   const [realTradingEnabled, setRealTradingEnabled] = useState(false)
   const [tradingMetrics, setTradingMetrics] = useState<ReturnType<typeof tradingController.getMetrics> | null>(null)
-  const [showSettings, setShowSettings] = useState(false)
 
   const tradingController = getTradingController()
 
@@ -216,11 +215,6 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
         balance={balance}
         equity={equity}
         hoverStance={hoverStance}
-        alignmentScore={alignmentScore}
-        alignmentVelocity={alignmentVelocity}
-        decisionProgress={decisionProgress}
-        energyPhase={energyPhase}
-        energyBudget={energyBudget}
         providerDisplay={providerDisplay}
         autoAlign={autoAlign}
         onToggleAutoAlign={() => setAutoAlign(!autoAlign)}
@@ -230,7 +224,6 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
         tradingStrategy={tradingStrategy}
         gameMode={gameMode}
         totalPnl={totalPnl}
-        phase={phase}
       />
     )
   }
@@ -819,11 +812,6 @@ interface DoomRunnerHudProps {
   balance: number
   equity: number
   hoverStance: Stance
-  alignmentScore: number
-  alignmentVelocity: number
-  decisionProgress: number
-  energyPhase: "calm" | "building" | "critical"
-  energyBudget: number
   providerDisplay: string
   autoAlign: boolean
   onToggleAutoAlign: () => void
@@ -833,7 +821,6 @@ interface DoomRunnerHudProps {
   tradingStrategy: string
   gameMode: GameMode
   totalPnl: number
-  phase: GamePhase
 }
 
 function DoomRunnerHUD({
@@ -841,11 +828,6 @@ function DoomRunnerHUD({
   balance,
   equity,
   hoverStance,
-  alignmentScore,
-  alignmentVelocity,
-  decisionProgress,
-  energyPhase,
-  energyBudget,
   providerDisplay,
   autoAlign,
   onToggleAutoAlign,
@@ -855,14 +837,8 @@ function DoomRunnerHUD({
   tradingStrategy,
   gameMode,
   totalPnl,
-  phase,
 }: DoomRunnerHudProps) {
-  const hpPct = clamp01(equity <= 0 ? 0 : equity / Math.max(balance || 1, equity || 1, 1))
-  const progress = clamp01(decisionProgress ?? 0)
   const stanceColor = stanceAccent[hoverStance]
-  const phaseColor = phaseAccent[energyPhase]
-  const velocityDisplay = Number.isFinite(alignmentVelocity) ? alignmentVelocity : 0
-  const alignmentDisplay = Number.isFinite(alignmentScore) ? alignmentScore : 0
   const paddingClass = isMobile ? "px-4 py-4" : "px-8 py-6"
 
   const handleReset = () => {
