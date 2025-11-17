@@ -83,6 +83,41 @@ export const useAccountState = create<AccountState>((set, get) => ({
 
     const state = get()
 
+    // Handle flat stance immediately to avoid conflicting position logic
+    if (stance === "flat") {
+      if (state.currentPositionStance !== "flat") {
+        // Realize current unrealized PnL into balance before flattening
+        const newBalance = state.balance + state.unrealizedPnl
+        const newRealizedPnl = state.realizedPnl + state.unrealizedPnl
+        const updatedPeakEquity = Math.max(newBalance, state.peakEquity)
+
+        console.log(
+          `[Position] Closing ${state.currentPositionStance} position → flat, realizing PnL: $${state.unrealizedPnl.toFixed(2)}`
+        )
+
+        set({
+          balance: newBalance,
+          realizedPnl: newRealizedPnl,
+          unrealizedPnl: 0,
+          equity: newBalance,
+          peakEquity: updatedPeakEquity,
+          currentPositionStance: "flat",
+          currentPositionEntryPrice: null,
+          lastPrice: currentPrice,
+        })
+      } else {
+        // Already flat - just sync bookkeeping
+        set({
+          unrealizedPnl: 0,
+          equity: state.balance,
+          currentPositionStance: "flat",
+          currentPositionEntryPrice: null,
+          lastPrice: currentPrice,
+        })
+      }
+      return
+    }
+
     // Check if we're flipping positions (changing stance)
     const isFlip = state.currentPositionStance !== stance && state.currentPositionStance !== "flat"
 
@@ -122,28 +157,6 @@ export const useAccountState = create<AccountState>((set, get) => ({
         currentPositionStance: stance,
         unrealizedPnl: 0,
         equity: state.balance,
-      })
-      return
-    }
-
-    // Going to flat from a position - realize the PnL first
-    if (stance === "flat" && state.currentPositionStance !== "flat") {
-      // Realize current unrealized PnL into balance
-      const newBalance = state.balance + state.unrealizedPnl
-      const newRealizedPnl = state.realizedPnl + state.unrealizedPnl
-      const updatedPeakEquity = Math.max(newBalance, state.peakEquity)
-
-      console.log(`[Position] Closing ${state.currentPositionStance} position → flat, realizing PnL: $${state.unrealizedPnl.toFixed(2)}`)
-
-      set({
-        balance: newBalance,
-        realizedPnl: newRealizedPnl,
-        unrealizedPnl: 0,
-        equity: newBalance,
-        peakEquity: updatedPeakEquity,
-        currentPositionStance: "flat",
-        currentPositionEntryPrice: null,
-        lastPrice: currentPrice,
       })
       return
     }

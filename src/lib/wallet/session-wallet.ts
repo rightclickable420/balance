@@ -78,6 +78,7 @@ function xorEncrypt(data: Uint8Array, key: Uint8Array): Uint8Array {
 export class SessionWallet {
   private keypair: Keypair | null = null
   private connection: Connection
+  private timeoutCheckInterval: ReturnType<typeof setInterval> | null = null
 
   constructor(rpcUrl: string) {
     this.connection = new Connection(rpcUrl, "confirmed")
@@ -219,6 +220,18 @@ export class SessionWallet {
       sessionStorage.removeItem(STORAGE_KEY)
       localStorage.removeItem(PERSISTENT_STORAGE_KEY)
       return false
+    }
+  }
+
+  /**
+   * Track last time the session wallet was used (best-effort)
+   */
+  private updateActivity(): void {
+    if (typeof window === "undefined") return
+    try {
+      sessionStorage.setItem("balance_session_last_active", Date.now().toString())
+    } catch (error) {
+      console.warn("[SessionWallet] Failed to record activity timestamp:", error)
     }
   }
 

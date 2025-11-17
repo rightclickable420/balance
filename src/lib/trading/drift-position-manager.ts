@@ -1,6 +1,7 @@
 import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL, Transaction, VersionedTransaction } from "@solana/web3.js"
 import {
   DriftClient,
+  type DriftEnv,
   User,
   Wallet,
   OrderType,
@@ -172,8 +173,12 @@ export class DriftPositionManager {
       // Initialize DriftClient with optional Helius rebate configuration
       const driftConfig: {
         connection: Connection
-        wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction>; signAllTransactions: (txs: Transaction[]) => Promise<Transaction[]> }
-        env: string
+        wallet: Wallet
+        env: DriftEnv
+        txSendOptions?: {
+          preflightCommitment: "processed" | "confirmed" | "finalized"
+          jitoRebateAddress: string
+        }
       } = {
         connection: this.connection,
         wallet,
