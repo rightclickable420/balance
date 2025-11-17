@@ -78,7 +78,10 @@ export function GameContainer({ isMobile = false }: GameContainerProps) {
 
   if (isMobile) {
     return (
-      <div className="flex h-full w-full flex-col items-center gap-4 overflow-hidden px-4 py-4">
+      <div className="flex h-full w-full flex-col items-center gap-3 overflow-hidden px-4 py-4">
+        <div className="w-full max-w-md flex-none">
+          <MobileTopBar />
+        </div>
         <div className="w-full max-w-md flex-1">
           <div className="relative w-full overflow-hidden rounded-3xl border border-white/10 bg-black shadow-2xl" style={{ aspectRatio: "16 / 9" }}>
             <div className="absolute inset-0">
@@ -86,7 +89,9 @@ export function GameContainer({ isMobile = false }: GameContainerProps) {
             </div>
           </div>
         </div>
-        <MobileStanceControls />
+        <div className="w-full max-w-md flex-none">
+          <MobileStanceControls />
+        </div>
       </div>
     )
   }
@@ -114,9 +119,9 @@ function MobileStanceControls() {
   }
 
   const stanceOptions: Array<{ label: string; value: Stance; accent: string }> = [
-    { label: "Long ↑", value: "long", accent: "from-emerald-500 to-emerald-600" },
-    { label: "Flat •", value: "flat", accent: "from-slate-500 to-slate-600" },
     { label: "Short ↓", value: "short", accent: "from-rose-500 to-rose-600" },
+    { label: "Flat •", value: "flat", accent: "from-slate-500 to-slate-600" },
+    { label: "Long ↑", value: "long", accent: "from-emerald-500 to-emerald-600" },
   ]
 
   return (
@@ -160,6 +165,84 @@ function MobileStanceControls() {
           Disable auto-align to take manual control.
         </p>
       )}
+    </div>
+  )
+}
+
+function MobileTopBar() {
+  const { hoverStance, tradingStrategy, tradingLeverage, gameMode, dataProvider } = useGameState()
+  const autoAlign = useAccountState((state) => state.autoAlign)
+  const setAutoAlign = useAccountState((state) => state.setAutoAlign)
+  const balance = useAccountState((state) => state.balance)
+  const equity = useAccountState((state) => state.equity)
+  const session = useGameState((state) => state.sessionWalletBalance)
+
+  const providerLabel = (() => {
+    const normalized = dataProvider?.toLowerCase() ?? "mock"
+    if (normalized === "hyperliquid") return "Hyperliquid"
+    if (normalized.startsWith("polygon")) return "Polygon"
+    if (normalized === "realtime") return "Real-Time SOL"
+    if (normalized === "pyth") return "Pyth Hermes"
+    if (normalized === "default") return "Live"
+    return "Mock Data"
+  })()
+
+  const handleReset = () => {
+    const { reset } = useGameState.getState()
+    reset()
+  }
+
+  return (
+    <div className="rounded-3xl border border-white/15 bg-black/70 p-4 text-white shadow-xl backdrop-blur">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <button
+          onClick={handleReset}
+          className="rounded-full border border-rose-500/50 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-rose-200"
+        >
+          ← Setup
+        </button>
+        <div className="rounded-full border border-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.4em] text-white/70">
+          {providerLabel}
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-white/50">Strategy</p>
+          <p className="text-base font-semibold text-white">
+            {tradingStrategy} · {tradingLeverage}x
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs uppercase tracking-[0.3em] text-white/50">Stance</p>
+          <p className="text-xl font-black text-white">{hoverStance}</p>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center justify-between text-sm text-white/80">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-white/40">Balance</p>
+          <p className="font-semibold">${balance.toFixed(2)}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-white/40">Equity</p>
+          <p className="font-semibold">${equity.toFixed(2)}</p>
+        </div>
+        {gameMode === "real" && (
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-white/40">Session</p>
+            <p className="font-semibold">{session.toFixed(3)} SOL</p>
+          </div>
+        )}
+      </div>
+      <div className="mt-3 flex items-center justify-between">
+        <button
+          onClick={() => setAutoAlign(!autoAlign)}
+          className={`rounded-full px-4 py-1 text-xs font-semibold uppercase tracking-widest ${
+            autoAlign ? "bg-emerald-500/20 text-emerald-200" : "bg-amber-500/20 text-amber-200"
+          }`}
+        >
+          Auto Align · {autoAlign ? "ON" : "OFF"}
+        </button>
+      </div>
     </div>
   )
 }

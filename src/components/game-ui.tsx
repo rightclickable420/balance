@@ -212,6 +212,9 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
   const alignmentLabel = alignmentScore >= 0 ? "Favorable" : "Against"
 
   if (experienceMode === "doomrunner") {
+    if (isMobile) {
+      return null
+    }
     return (
       <DoomRunnerHUD
         isMobile={isMobile}
