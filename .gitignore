@@ -46,6 +46,4 @@ next-env.d.ts
 /scripts/prboom-web/assets/freedoom-0.12.1/
 /scripts/prboom-web/assets/freedoom-0.12.1.zip
 /scripts/prboom-web/tools/zdbsp/
-/public/gzdoom-runner/*.wasm
-/public/gzdoom-runner/*.js
-/public/gzdoom-runner/*.data
+# Include Doom Runner WASM bundle in repo so production builds can load it
