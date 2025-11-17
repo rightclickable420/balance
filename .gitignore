@@ -45,7 +45,7 @@ next-env.d.ts
 /scripts/prboom-web/assets/_mr-rails-raw.wad
 /scripts/prboom-web/assets/freedoom-0.12.1/
 /scripts/prboom-web/assets/freedoom-0.12.1.zip
-/scripts/prboom-web/tools/zdbsp/build/
+/scripts/prboom-web/tools/zdbsp/
 /public/gzdoom-runner/*.wasm
 /public/gzdoom-runner/*.js
 /public/gzdoom-runner/*.data
