@@ -5,7 +5,7 @@
  * user stats account public key needed for BALANCE_REFERRER_INFO
  */
 
-import { Connection, PublicKey } from "@solana/web3.js"
+import { Connection, PublicKey, Transaction } from "@solana/web3.js"
 import { DriftClient, Wallet } from "@drift-labs/sdk"
 
 const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"
@@ -34,11 +34,11 @@ async function getReferrerInfo() {
     console.log("📍 Referrer wallet:", referrerWalletPubkey.toBase58())
 
     // Create a dummy wallet (we don't need to sign anything)
-    const dummyWallet: Wallet = {
+    const dummyWallet = {
       publicKey: referrerWalletPubkey,
-      signTransaction: async (tx) => tx,
-      signAllTransactions: async (txs) => txs,
-    }
+      signTransaction: async (tx: Transaction) => tx,
+      signAllTransactions: async (txs: Transaction[]) => txs,
+    } as Wallet
 
     const driftClient = new DriftClient({
       connection,

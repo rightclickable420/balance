@@ -101,4 +101,43 @@ export const computeFeatures = (
   }
 }
 
+/**
+ * Extract features from an array of candles
+ * Processes all candles sequentially to build up state, returns features for the latest candle
+ */
+export const extractFeatures = (candles: Candle[]): Features => {
+  if (candles.length === 0) {
+    // Return neutral features if no candles
+    return {
+      momentum: 0,
+      volatility: 0.5,
+      volume: 0.5,
+      breadth: 0,
+      orderImbalance: 0,
+      regime: 0.5,
+    }
+  }
+
+  // Initialize feature state
+  let state = initFeatureState()
+
+  // Process all candles to build up state
+  let features: Features = {
+    momentum: 0,
+    volatility: 0.5,
+    volume: 0.5,
+    breadth: 0,
+    orderImbalance: 0,
+    regime: 0.5,
+  }
+
+  for (const candle of candles) {
+    const result = computeFeatures(state, candle)
+    features = result.features
+    state = result.state
+  }
+
+  return features
+}
+
 export type { FeatureState }

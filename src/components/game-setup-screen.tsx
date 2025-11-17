@@ -20,6 +20,7 @@ const MIN_TRADING_COLLATERAL = 0.04 // SOL - minimum collateral (~$8 at $200/SOL
 const GAS_BUFFER = 0.005 // SOL - small buffer for withdrawal transaction
 const MIN_DEPOSIT = DRIFT_ACCOUNT_RENT + MIN_TRADING_COLLATERAL + GAS_BUFFER // 0.08 SOL
 const DEFAULT_DEPOSIT = 0.1 // SOL - recommended starting amount
+const REAL_TRADING_AVAILABLE = false
 
 export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
   const { connected, publicKey, signMessage, sendTransaction } = useWallet()
@@ -284,7 +285,7 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
         const driftManager = getDriftPositionManager()
 
         // Check if Drift is initialized for this session
-        if (driftManager.isInitialized) {
+        if (driftManager.getIsInitialized()) {
           console.log("[Withdraw] Checking Drift account for collateral...")
 
           // Get Drift collateral
@@ -397,7 +398,7 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
         const { getDriftPositionManager } = await import("@/lib/trading/drift-position-manager")
         const driftManager = getDriftPositionManager()
 
-        if (driftManager.isInitialized) {
+        if (driftManager.getIsInitialized()) {
           const summary = await driftManager.getPositionSummary()
           driftBalance = summary.totalCollateral
 
@@ -443,11 +444,13 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
   }
 
   const handleStartGame = () => {
-    if (selectedMode === "real" && sessionBalance < MIN_DEPOSIT) {
+    const modeToStart: "mock" | "real" = REAL_TRADING_AVAILABLE ? selectedMode : "mock"
+
+    if (modeToStart === "real" && sessionBalance < MIN_DEPOSIT) {
       alert(`Please deposit at least ${MIN_DEPOSIT} SOL into your session wallet before starting real trading`)
       return
     }
-    onStartGame(selectedMode, tradingStrategy, leverage)
+    onStartGame(modeToStart, tradingStrategy, leverage)
   }
 
   return (
@@ -456,26 +459,26 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
         {/* Header */}
         <div className="text-center mb-12">
           <h1 className="font-bold tracking-tight text-white text-6xl mb-4">
-            Balance
+            DOOM TRADE
           </h1>
-          <p className="text-gray-400 text-lg">
-            Stack stones. Follow the market. Stay balanced.
+          <p className="text-gray-300 text-lg">
+            Live SOL trading inside Doom Runner. Steer between SHORT, FLAT, and LONG lanes as conviction swings.
           </p>
         </div>
 
         {/* Setup Card */}
         <div className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-2xl p-8 space-y-6">
-          {/* Doom Runner Mode (Balance mode removed) */}
+          {/* Doom Runner Mode Overview */}
           {experienceMode === "doomrunner" && (
-            <div className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4 text-sm text-purple-100/90 leading-relaxed space-y-2">
+            <div className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4 text-sm text-purple-100/90 leading-relaxed space-y-3">
               <p>
-                Doom Runner renders directly in the browser. The same market alignment, auto-align logic, and Drift hooks
-                apply—only the visuals change. Use the controls below to run mock or real sessions just like the Balance
-                stacker.
+                DOOM TRADE pipes live SOL candles directly into Doom Runner. Market alignment pushes the Slayer between SHORT (left lane), FLAT (center), and LONG (right lane) positions while conviction spikes spawn demons.
+              </p>
+              <p className="text-purple-100">
+                Manual strategy turns auto-align off so you can trade like a DJ: <span className="font-semibold text-white">↑ Up</span> = go LONG, <span className="font-semibold text-white">↓ Down</span> = go SHORT, <span className="font-semibold text-white">Space</span> = flatten out.
               </p>
               <p className="text-purple-200/80">
-                Want the standalone GZDoom build? Zip the contents of <code className="text-white/80">market-runner/pk3</code>
-                and follow <code className="text-white/80">market-runner/README.md</code>.
+                Auto strategies keep the AI lane switching while you focus on survivability.
               </p>
             </div>
           )}
@@ -618,17 +621,22 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
                 </div>
               </button>
 
-              {/* Real Trading Mode */}
+              {/* Real Trading Mode - Coming Soon */}
               <button
-                onClick={() => setSelectedMode("real")}
-                disabled={!connected}
-                className={`p-6 rounded-xl border-2 transition-all ${
-                  selectedMode === "real"
+                type="button"
+                onClick={() => {
+                  if (REAL_TRADING_AVAILABLE) {
+                    setSelectedMode("real")
+                  }
+                }}
+                disabled={!REAL_TRADING_AVAILABLE || !connected}
+                className={`relative p-6 rounded-xl border-2 transition-all ${
+                  REAL_TRADING_AVAILABLE && selectedMode === "real"
                     ? "border-rose-500 bg-rose-500/10"
-                    : "border-white/10 bg-black/20 hover:border-white/20"
-                } ${!connected ? "opacity-50 cursor-not-allowed" : ""}`}
+                    : "border-white/10 bg-black/20"
+                } ${REAL_TRADING_AVAILABLE ? "hover:border-white/20" : "opacity-50 cursor-not-allowed"}`}
               >
-                <div className="text-center space-y-3">
+                <div className={`text-center space-y-3 ${REAL_TRADING_AVAILABLE ? "" : "opacity-40"}`}>
                   <div className="text-4xl">⚡</div>
                   <div>
                     <h3 className="text-white font-bold text-lg mb-1">Real Trading</h3>
@@ -641,6 +649,13 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
                     <span className="px-2 py-1 bg-rose-500/20 text-rose-400 rounded">Real money</span>
                   </div>
                 </div>
+                {!REAL_TRADING_AVAILABLE && (
+                  <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/70">
+                    <span className="text-rose-200 font-semibold tracking-[0.2em] text-xs uppercase">
+                      Coming Soon
+                    </span>
+                  </div>
+                )}
               </button>
             </div>
           </div>
@@ -695,18 +710,17 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
             </div>
           </div>
 
-          {/* Leverage Selection - Only for Real Trading */}
-          {selectedMode === "real" && (
-            <>
-              <div className="h-px bg-white/10" />
+          {/* Leverage Selection */}
+          <>
+            <div className="h-px bg-white/10" />
 
-              <div className="space-y-4">
-                <div>
-                  <h2 className="text-white text-xl font-bold mb-1">Leverage</h2>
-                  <p className="text-gray-400 text-sm">
-                    Choose your position multiplier (1x - 100x)
-                  </p>
-                </div>
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-white text-xl font-bold mb-1">Leverage</h2>
+                <p className="text-gray-400 text-sm">
+                  Choose your position multiplier (1x - 100x)
+                </p>
+              </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -746,10 +760,10 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
                 </div>
               </div>
             </>
-          )}
+
 
           {/* Real Trading Warning */}
-          {selectedMode === "real" && connected && (
+          {REAL_TRADING_AVAILABLE && selectedMode === "real" && connected && (
             <div className="p-4 bg-rose-900/20 border border-rose-600/30 rounded-lg">
               <div className="flex items-start gap-3">
                 <div className="text-2xl">⚠️</div>
@@ -767,16 +781,16 @@ export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
           {/* Start Button */}
           <button
             onClick={handleStartGame}
-            disabled={selectedMode === "real" && (!connected || sessionBalance < MIN_DEPOSIT)}
+            disabled={REAL_TRADING_AVAILABLE && selectedMode === "real" && (!connected || sessionBalance < MIN_DEPOSIT)}
             className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-              selectedMode === "real" && (!connected || sessionBalance < MIN_DEPOSIT)
+              REAL_TRADING_AVAILABLE && selectedMode === "real" && (!connected || sessionBalance < MIN_DEPOSIT)
                 ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                : selectedMode === "mock"
+                : selectedMode === "mock" || !REAL_TRADING_AVAILABLE
                 ? "bg-cyan-500 hover:bg-cyan-600 text-white"
                 : "bg-rose-500 hover:bg-rose-600 text-white"
             }`}
           >
-            {selectedMode === "mock"
+            {!REAL_TRADING_AVAILABLE || selectedMode === "mock"
               ? "Start Mock Trading"
               : sessionBalance < MIN_DEPOSIT
               ? `Deposit ${MIN_DEPOSIT}+ SOL to Start`

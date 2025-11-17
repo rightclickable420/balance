@@ -1,6 +1,5 @@
 import { create } from "zustand"
 import type { Candle } from "../types"
-import type { Stone } from "./physics-engine"
 import type { Features } from "@/lib/data/features"
 import type { PublicKey } from "@solana/web3.js"
 
@@ -30,7 +29,7 @@ export interface GameState {
 
   // Current stone
   currentCandle: Candle | null
-  currentStone: Stone | null
+  currentStone: Record<string, never> | null // Kept for compatibility but not used in Doom Runner
   dropStartTime: number | null
   canDecide: boolean
 
@@ -75,7 +74,7 @@ export interface GameState {
   setScore: (score: number) => void
   incrementScore: (amount: number) => void
   setCurrentCandle: (candle: Candle | null) => void
-  setCurrentStone: (stone: Stone | null) => void
+  setCurrentStone: (stone: Record<string, never> | null) => void
   setDropStartTime: (time: number | null) => void
   setCanDecide: (canDecide: boolean) => void
   incrementStonesPlaced: () => void
@@ -126,7 +125,7 @@ export const useGameState = create<GameState>((set) => ({
   candleHistory: [],
   debugMode: false,
   timeScale: 1,
-  hoverStance: "long",
+  hoverStance: "flat", // Start flat - auto-align will set position once market data is ready
   latestFeatures: null,
   decisionProgress: 0,
   dataProvider: "mock",
@@ -233,7 +232,7 @@ export const useGameState = create<GameState>((set) => ({
       candleHistory: [],
       debugMode: false,
       timeScale: 1,
-      hoverStance: "long",
+      hoverStance: "flat", // Start flat - auto-align will set position once market data is ready
       latestFeatures: null,
       decisionProgress: 0,
       dataProvider: "mock",

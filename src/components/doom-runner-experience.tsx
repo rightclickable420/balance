@@ -105,43 +105,63 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
     }
   }, [engineReady])
 
-  // Initialize data feed
+  // Initialize data feed with polling mechanism
   useEffect(() => {
     console.log("[DoomRunner] Initializing data feed...")
     const dataSource = createCandleSource()
     dataSourceRef.current = dataSource
 
     const { setDataProvider, setLatestFeatures, addCandleToHistory } = useGameState.getState()
-    const { setLastPrice } = useAccountState.getState()
+    const { seedPrice } = useAccountState.getState()
 
     setDataProvider(dataSource.getSource())
     console.log("[DoomRunner] Data source:", dataSource.getSource())
 
-    const unsubscribe = dataSource.subscribe((candle: Candle) => {
-      // Update candle history
-      candleHistoryRef.current = [...candleHistoryRef.current, candle].slice(-180) // Keep last 180 candles
-      addCandleToHistory(candle)
+    // Poll data source every 1 second for new candles
+    const pollInterval = setInterval(() => {
+      try {
+        const candle = dataSource.next()
 
-      // Update price
-      setLastPrice(candle.close)
+        if (!candle || !Number.isFinite(candle.close)) {
+          console.warn("[DoomRunner] Invalid candle received:", candle)
+          return
+        }
 
-      // Extract and update features
-      if (candleHistoryRef.current.length >= 10) {
-        const features = extractFeatures(candleHistoryRef.current)
-        setLatestFeatures(features)
-        console.log("[DoomRunner] Features updated:", {
-          momentum: features.momentum.toFixed(3),
-          conviction: features.breadth.toFixed(3),
-          price: candle.close.toFixed(2),
-        })
+        // Update candle history
+        candleHistoryRef.current = [...candleHistoryRef.current, candle].slice(-180) // Keep last 180 candles
+        addCandleToHistory(candle)
+
+        // Update price
+        seedPrice(candle.close)
+
+        // Extract and update features (need 10 candles for analysis)
+        if (candleHistoryRef.current.length >= 10) {
+          const features = extractFeatures(candleHistoryRef.current)
+          setLatestFeatures(features)
+
+          // Only update PnL once we have enough data for auto-align to make decisions
+          // This prevents opening positions before market analysis is ready
+          const { updateUnrealizedPnl } = useAccountState.getState()
+          const currentStance = useGameState.getState().hoverStance
+          updateUnrealizedPnl(candle.close, currentStance)
+
+          console.log("[DoomRunner] Features updated:", {
+            momentum: features.momentum.toFixed(3),
+            conviction: features.breadth.toFixed(3),
+            price: candle.close.toFixed(2),
+            stance: currentStance,
+          })
+        }
+      } catch (error) {
+        console.error("[DoomRunner] Error polling candle data:", error)
       }
-    })
+    }, 1000) // Poll every 1 second
 
-    console.log("[DoomRunner] ✅ Data feed subscribed")
+    console.log("[DoomRunner] ✅ Data feed polling started (1s interval)")
 
     return () => {
       console.log("[DoomRunner] Cleaning up data feed...")
-      unsubscribe()
+      clearInterval(pollInterval)
       dataSourceRef.current = null
     }
   }, []) // Run once on mount
@@ -159,15 +179,17 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
 
     // Strategy-specific conviction thresholds
     const convictionThreshold = (() => {
-      switch (tradingStrategy as TradingStrategy) {
-        case "conservative":
+      const strategy = tradingStrategy as TradingStrategy
+      if (strategy === "manual") {
+        return 0.5 // When auto-align is toggled on, treat manual like balanced auto trading
+      }
+      switch (strategy) {
+        case "high_conviction":
           return 0.7 // Only trade on very high conviction
         case "balanced":
           return 0.5 // Default threshold
         case "aggressive":
           return 0.3 // Trade on lower conviction
-        case "manual":
-          return 1.0 // Never auto-trade (manual only)
         default:
           return 0.5
       }
@@ -193,6 +215,54 @@ export function DoomRunnerExperience({ isMobile = false }: { isMobile?: boolean 
       setHoverStance(newStance)
     }
   }, [autoAlign, latestFeatures, tradingStrategy, hoverStance, setHoverStance])
+
+  // Manual trading controls - map keys to stances when auto-align is disabled
+  useEffect(() => {
+    if (autoAlign || (tradingStrategy as TradingStrategy) !== "manual") {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) return
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return
+      }
+
+      let nextStance: Stance | null = null
+      switch (event.key) {
+        case "ArrowUp":
+          nextStance = "long"
+          break
+        case "ArrowDown":
+          nextStance = "short"
+          break
+        case " ":
+        case "Spacebar":
+          nextStance = "flat"
+          break
+        default:
+          break
+      }
+
+      if (!nextStance || nextStance === hoverStance) {
+        return
+      }
+
+      event.preventDefault()
+      setHoverStance(nextStance)
+
+      const { lastPrice: currentPrice, updateUnrealizedPnl } = useAccountState.getState()
+      if (Number.isFinite(currentPrice ?? NaN)) {
+        updateUnrealizedPnl(currentPrice as number, nextStance)
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [autoAlign, hoverStance, setHoverStance, tradingStrategy])
 
   // Old console command approach - replaced by laneTarget prop
   // useEffect(() => {

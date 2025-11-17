@@ -126,13 +126,35 @@ export const useAccountState = create<AccountState>((set, get) => ({
       return
     }
 
+    // Going to flat from a position - realize the PnL first
+    if (stance === "flat" && state.currentPositionStance !== "flat") {
+      // Realize current unrealized PnL into balance
+      const newBalance = state.balance + state.unrealizedPnl
+      const newRealizedPnl = state.realizedPnl + state.unrealizedPnl
+      const updatedPeakEquity = Math.max(newBalance, state.peakEquity)
+
+      console.log(`[Position] Closing ${state.currentPositionStance} position → flat, realizing PnL: $${state.unrealizedPnl.toFixed(2)}`)
+
+      set({
+        balance: newBalance,
+        realizedPnl: newRealizedPnl,
+        unrealizedPnl: 0,
+        equity: newBalance,
+        peakEquity: updatedPeakEquity,
+        currentPositionStance: "flat",
+        currentPositionEntryPrice: null,
+        lastPrice: currentPrice,
+      })
+      return
+    }
+
     // Normal case: update unrealized P&L for current position
     const entryPrice = state.currentPositionEntryPrice
     const direction = stance === "long" ? 1 : stance === "short" ? -1 : 0
 
     if (direction === 0) {
-      // Flat stance = no position
-      set({ unrealizedPnl: 0, equity: state.balance, currentPositionStance: "flat" })
+      // Already flat with no position
+      set({ unrealizedPnl: 0, equity: state.balance, currentPositionStance: "flat", lastPrice: currentPrice })
       return
     }
 

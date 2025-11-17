@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js"
+import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL, Transaction } from "@solana/web3.js"
 import {
   DriftClient,
   User,
@@ -123,6 +123,13 @@ export class DriftPositionManager {
   }
 
   /**
+   * Check if Drift client is initialized
+   */
+  getIsInitialized(): boolean {
+    return this.isInitialized
+  }
+
+  /**
    * Initialize Drift client with session keypair
    * This must be called before any trading operations
    */
@@ -139,9 +146,10 @@ export class DriftPositionManager {
       )
 
       // Create wallet from session keypair
-      const wallet: Wallet = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wallet = {
         publicKey: sessionKeypair.publicKey,
-        signTransaction: async (tx) => {
+        signTransaction: async (tx: any) => {
           // Handle both legacy Transaction and VersionedTransaction
           if ('partialSign' in tx) {
             // Legacy Transaction
@@ -152,7 +160,7 @@ export class DriftPositionManager {
           }
           return tx
         },
-        signAllTransactions: async (txs) => {
+        signAllTransactions: async (txs: any[]) => {
           txs.forEach((tx) => {
             if ('partialSign' in tx) {
               tx.partialSign(sessionKeypair)
@@ -162,10 +170,14 @@ export class DriftPositionManager {
           })
           return txs
         },
-      }
+      } as Wallet
 
       // Initialize DriftClient with optional Helius rebate configuration
-      const driftConfig: any = {
+      const driftConfig: {
+        connection: Connection
+        wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction>; signAllTransactions: (txs: Transaction[]) => Promise<Transaction[]> }
+        env: string
+      } = {
         connection: this.connection,
         wallet,
         env: "mainnet-beta",

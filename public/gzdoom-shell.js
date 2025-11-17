@@ -223,7 +223,7 @@
           } catch (err) {
             // Silent fail - not critical
           }
-        }, 5000) // Check every 5 seconds
+        }, 60000) // Check every 60 seconds
 
         if (lastAlignmentPayload != null) {
           applyAlignmentPayload(lastAlignmentPayload)
