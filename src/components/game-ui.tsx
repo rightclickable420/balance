@@ -153,14 +153,16 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
 
   // Test if basic JavaScript works (only on client side)
   useEffect(() => {
-    if (setupPhase !== "playing") return // Skip effects during setup
-    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-      try {
-        document.title = `Doom Runner - Stones: ${stonesPlaced}`
-        console.log(`[GameUI] Title set to: Doom Runner - Stones: ${stonesPlaced}`)
-      } catch (error) {
-        console.error("[GameUI] Failed to set title:", error)
+    if (typeof window === "undefined" || typeof document === "undefined") return
+    const baseTitle = "DOOM TRADE"
+    try {
+      if (setupPhase === "playing") {
+        document.title = `${baseTitle} · Stones: ${stonesPlaced}`
+      } else {
+        document.title = baseTitle
       }
+    } catch (error) {
+      console.error("[GameUI] Failed to set title:", error)
     }
   }, [stonesPlaced, setupPhase])
 
