@@ -189,6 +189,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     if (normalized === "hyperliquid") return "Hyperliquid"
     if (normalized.startsWith("polygon")) return "Polygon"
     if (normalized === "realtime") return "Real-Time SOL"
+    if (normalized === "pyth") return "Pyth Hermes"
     if (normalized === "default") return "Live"
     return "Mock Data"
   })()
