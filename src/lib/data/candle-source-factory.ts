@@ -2,6 +2,7 @@ import { MockCandleSource } from "./mock-candle-source"
 import { LiveCandleSource } from "./live-candle-source"
 import { PolygonWebsocketSource } from "./polygon-websocket-source"
 import { RealtimeWebsocketSource } from "./realtime-websocket-source"
+import { PythCandleSource } from "./pyth-candle-source"
 import type { CandleSource } from "@/lib/types"
 
 const getProvider = () =>
@@ -15,7 +16,7 @@ const REALTIME_WS_URL = (typeof process !== "undefined" ? process.env.NEXT_PUBLI
 export const createCandleSource = (): CandleSource => {
   const provider = getProvider()
 
-  // Real-time Solana aggregator (Jupiter + Raydium)
+  // Real-time Solana aggregator (Jupiter + Raydium via custom service)
   if (provider === "realtime") {
     if (typeof window === "undefined") {
       console.warn("[Balance] Realtime provider requires browser, using mock data")
@@ -38,6 +39,11 @@ export const createCandleSource = (): CandleSource => {
       return new MockCandleSource()
     }
     return new PolygonWebsocketSource({ symbol: DEFAULT_SYMBOL, snapshotSize: 180 })
+  }
+
+  if (provider === "pyth") {
+    console.log("[Balance] ✅ Using Pyth Hermes API directly for SOL/USD candles")
+    return new PythCandleSource()
   }
 
   if (LIVE_ENABLED) {
