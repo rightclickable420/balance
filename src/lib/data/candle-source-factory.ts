@@ -5,9 +5,22 @@ import { RealtimeWebsocketSource } from "./realtime-websocket-source"
 import { PythCandleSource } from "./pyth-candle-source"
 import type { CandleSource } from "@/lib/types"
 
-const getProvider = () =>
-  (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_BALANCE_DATA_PROVIDER : undefined)?.toLowerCase() ??
-  "mock"
+const getProvider = () => {
+  const envValue = (typeof process !== "undefined"
+    ? process.env.NEXT_PUBLIC_BALANCE_DATA_PROVIDER
+    : undefined)?.toLowerCase()
+
+  if (envValue && envValue.length > 0) {
+    return envValue
+  }
+
+  // Default to real-time price feed in production builds
+  if (typeof process !== "undefined" && process.env.NODE_ENV === "production") {
+    return "pyth"
+  }
+
+  return "mock"
+}
 
 const LIVE_ENABLED = typeof process !== "undefined" && process.env.NEXT_PUBLIC_BALANCE_USE_LIVE === "true"
 const DEFAULT_SYMBOL = (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_BALANCE_SYMBOL : undefined) ?? "SPY"
