@@ -154,17 +154,8 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
   // Test if basic JavaScript works (only on client side)
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return
-    const baseTitle = "DOOM TRADE"
-    try {
-      if (setupPhase === "playing") {
-        document.title = `${baseTitle} · Stones: ${stonesPlaced}`
-      } else {
-        document.title = baseTitle
-      }
-    } catch (error) {
-      console.error("[GameUI] Failed to set title:", error)
-    }
-  }, [stonesPlaced, setupPhase])
+    document.title = "DOOM TRADE"
+  }, [setupPhase])
 
   // Early return AFTER all hooks
   if (setupPhase !== "playing") {

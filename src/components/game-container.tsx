@@ -78,11 +78,11 @@ export function GameContainer({ isMobile = false }: GameContainerProps) {
 
   if (isMobile) {
     return (
-      <div className="flex h-full w-full flex-col items-center gap-3 overflow-hidden px-4 py-4">
+      <div className="flex min-h-screen w-full flex-col items-center gap-3 overflow-hidden px-4 py-4">
         <div className="w-full max-w-md flex-none">
           <MobileTopBar />
         </div>
-        <div className="w-full max-w-md flex-1">
+        <div className="w-full max-w-md">
           <div className="relative w-full overflow-hidden rounded-3xl border border-white/10 bg-black shadow-2xl" style={{ aspectRatio: "16 / 9" }}>
             <div className="absolute inset-0">
               <DoomRunnerExperience />
