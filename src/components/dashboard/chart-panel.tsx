@@ -170,8 +170,8 @@ export function ChartPanel({ visible = true, onToggleVisibility }: ChartPanelPro
         close: candle.close,
       }))
 
-      // Sort by time
-      chartData.sort((a, b) => a.time - b.time)
+      // Sort by time (convert back to number for comparison)
+      chartData.sort((a, b) => (a.time as number) - (b.time as number))
 
       // Deduplicate: keep only the last candle for each unique timestamp
       const deduped = chartData.reduce((acc, candle) => {
