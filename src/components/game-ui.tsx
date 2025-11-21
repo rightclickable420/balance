@@ -141,39 +141,19 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
   const formatEquityDisplay = formatBalanceDisplay
   const zeroBalanceLabel = gameMode === "real" ? "$0.00" : "0.000 SOL"
 
-  // Auto-enable trading controller when playing (both mock and real modes)
+  // Auto-enable real trading when in real mode
   useEffect(() => {
-    if (setupPhase !== "playing") {
-      // Disable when not playing
-      if (realTradingEnabled) {
-        tradingController.disable()
-        setRealTradingEnabled(false)
-        setIsTradingPaused(false)
-        console.log("[GameUI] Trading controller disabled (not playing)")
-      }
-      return
-    }
-
-    // Enable for real mode
+    if (setupPhase !== "playing") return // Skip effects during setup
     if (gameMode === "real" && !realTradingEnabled && !userDisabledRealTrading) {
       tradingController.enable()
       setRealTradingEnabled(true)
       setIsTradingPaused(false)
       console.log("[GameUI] Real trading auto-enabled")
-    }
-    // Enable for mock mode too (needed for position tracking and lane shifting)
-    else if (gameMode === "mock" && !realTradingEnabled) {
-      tradingController.enable()
-      setRealTradingEnabled(true)
-      setIsTradingPaused(false)
-      console.log("[GameUI] Mock trading controller enabled (for position tracking)")
-    }
-    // Disable if switching away from both modes
-    else if (gameMode !== "real" && gameMode !== "mock" && realTradingEnabled) {
+    } else if ((gameMode !== "real" || setupPhase !== "playing") && realTradingEnabled) {
       tradingController.disable()
       setRealTradingEnabled(false)
       setIsTradingPaused(false)
-      console.log("[GameUI] Trading controller disabled (unknown mode)")
+      console.log("[GameUI] Real trading auto-disabled (mock mode or reset)")
     }
   }, [gameMode, realTradingEnabled, tradingController, setupPhase, userDisabledRealTrading])
 

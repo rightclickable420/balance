@@ -784,27 +784,23 @@ export function DoomRunnerExperience() {
     if (gameMode !== "mock") return
     if (setupPhase !== "playing") return
     if (!latestFeatures) return
-    if (!tradingController.isEnabled()) return
     if (!Number.isFinite(lastPrice ?? NaN)) return
 
-    // For mock mode, use maximum conviction to execute trades immediately
-    const conviction = 1.0
+    // For mock mode: Update account state and sync driftPositionSide directly
+    // No need to go through trading controller which is for real trades only
+    const { updateUnrealizedPnl } = useAccountState.getState()
+    updateUnrealizedPnl(lastPrice as number, hoverStance)
 
-    console.log(`[DoomRunner] Mock Trading - Direct stance execution: ${hoverStance}`)
+    // Sync position to driftPositionSide for lane shifting
+    useGameState.setState({ driftPositionSide: hoverStance })
 
-    tradingController
-      .onStanceChange(hoverStance, lastPrice as number, conviction, unrealizedPnl, "mock")
-      .catch((error) => {
-        console.error("[DoomRunner] Failed to execute mock trade:", error)
-      })
+    console.log(`[DoomRunner] Mock Trading - Position updated: ${hoverStance}`)
   }, [
     gameMode,
     hoverStance,
     latestFeatures,
     lastPrice,
     setupPhase,
-    tradingController,
-    unrealizedPnl,
   ])
 
   const toggleChartVisibility = useCallback(() => {
