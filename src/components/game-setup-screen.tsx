@@ -30,8 +30,7 @@ const MIN_DEPOSIT = DRIFT_ACCOUNT_RENT + MIN_TRADING_COLLATERAL + GAS_BUFFER // 
 const DEFAULT_DEPOSIT = 0.1 // SOL - recommended starting amount
 const SOLANA_RPC_ENDPOINT =
   process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"
-const REAL_TRADING_AVAILABLE =
-  typeof process !== "undefined" && process.env.NEXT_PUBLIC_REAL_TRADING === "true"
+const REAL_TRADING_AVAILABLE = true
 
 export function GameSetupScreen({ onStartGame }: GameSetupScreenProps) {
   const { connected, publicKey, signMessage, sendTransaction } = useWallet()
