@@ -13,9 +13,9 @@ import { toast } from "sonner"
  *
  * Strategy Modes:
  * - MANUAL: User makes all trading decisions manually
- * - AGGRESSIVE: Trade every signal, maximize action (high fees, low win rate needed)
- * - BALANCED: Filter for decent setups, good risk/reward (moderate fees)
- * - HIGH_CONVICTION: Only take best setups (low fees, needs strong signals)
+ * - AGGRESSIVE (Sicko Mode): Trade every signal, maximize action (high fees, low win rate needed)
+ * - BALANCED (Degen Mode): Filter for decent setups, good risk/reward (moderate fees)
+ * - HIGH_CONVICTION (Midcurve): Only take best setups (low fees, needs strong signals)
  */
 
 export type TradingStrategy = "manual" | "aggressive" | "balanced" | "high_conviction"
@@ -89,7 +89,7 @@ const STRATEGY_PRESETS: Record<TradingStrategy, StrategyPreset> = {
     dynamicSizing: false,
   },
   aggressive: {
-    name: "Aggressive",
+    name: "Sicko Mode",
     description: "Trade clear signals • Good risk/reward • Moderate fees",
     minConviction: 0.45, // Reduced from 0.60 - allow more trades (was filtering too much)
     minHoldTimeMs: 5000, // Reduced from 8000 - 5 seconds (was too long)
@@ -98,7 +98,7 @@ const STRATEGY_PRESETS: Record<TradingStrategy, StrategyPreset> = {
     dynamicSizing: true, // Scale with conviction + microstructure
   },
   balanced: {
-    name: "Balanced",
+    name: "Degen Mode",
     description: "Filter weak signals • Good risk/reward • Low fees",
     minConviction: 0.70, // Changed from 0.60 - higher conviction threshold
     minHoldTimeMs: 15000, // Changed from 5000 - 15 seconds minimum hold
@@ -107,7 +107,7 @@ const STRATEGY_PRESETS: Record<TradingStrategy, StrategyPreset> = {
     dynamicSizing: true, // Scale with conviction
   },
   high_conviction: {
-    name: "High Conviction",
+    name: "Midcurve",
     description: "Only best setups • Very low fees • Needs strong signals",
     minConviction: 0.85, // Changed from 0.75 - only trade very clear signals
     minHoldTimeMs: 30000, // Changed from 9000 - 30 seconds minimum hold
@@ -191,9 +191,9 @@ export class TradingController {
   private estimateTradesPerMin(): number {
     const preset = this.getStrategyPreset()
     // Rough estimate based on conviction threshold
-    if (preset.minConviction < 0.5) return 8 // Aggressive: ~8/min
-    if (preset.minConviction < 0.7) return 3 // Balanced: ~3/min
-    return 1 // High conviction: ~1/min
+    if (preset.minConviction < 0.5) return 8 // Sicko Mode (aggressive): ~8/min
+    if (preset.minConviction < 0.7) return 3 // Degen Mode (balanced): ~3/min
+    return 1 // Midcurve (high conviction): ~1/min
   }
 
   /**
@@ -427,12 +427,14 @@ export class TradingController {
    * @param currentPrice - Current market price
    * @param conviction - Market conviction (0-1, from computeMarketConviction)
    * @param unrealizedPnl - Current unrealized PnL (optional, for fee-aware exits)
+   * @param gameMode - Game mode (mock/real) - mock mode bypasses confirmation delays
    */
   async onStanceChange(
     newStance: Stance,
     currentPrice: number,
     conviction: number = 1.0,
-    unrealizedPnl?: number
+    unrealizedPnl?: number,
+    gameMode?: "mock" | "real"
   ): Promise<void> {
     if (!this.config.enabled) {
       // Trading disabled - just update state
@@ -504,7 +506,9 @@ export class TradingController {
       `[TradingController] Stance changed: ${this.lastStance} → ${newStance} @ $${currentPrice.toFixed(2)} (conviction: ${(conviction * 100).toFixed(0)}%)`
     )
 
+    // Skip flat confirmation delay for mock trading
     if (
+      gameMode !== "mock" &&
       newStance === "flat" &&
       this.lastStance !== "flat" &&
       this.activePosition &&
@@ -512,7 +516,7 @@ export class TradingController {
       now - this.flatSignalStart < FLAT_CONFIRMATION_MS
     ) {
       console.log(
-        `[Filter] ⏳ Flat signal too brief (${((now - this.flatSignalStart) / 1000).toFixed(2)}s < ${(FLAT_CONFIRMATION_MS / 1000).toFixed(2)}s)`
+        `[Filter] ⏳ Flat signal too brief (${((now - this.flatSignalStart) / 1000).toFixed(2)}s < ${(FLAT_CONFIRMATION_MS / 1000).toFixed(2)}s) [real mode]`
       )
       this.trackFilteredTrade(this.activePosition.sizeUsd)
       return

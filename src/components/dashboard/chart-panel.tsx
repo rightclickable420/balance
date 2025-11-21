@@ -7,6 +7,9 @@ import type { Candle } from "@/lib/types"
 // Import types only at build time
 import type { IChartApi, ISeriesApi } from "lightweight-charts"
 
+// Global flag to prevent duplicate chart instances (React Strict Mode workaround)
+let globalChartInstance: IChartApi | null = null
+
 interface ChartPanelProps {
   visible?: boolean
   onToggleVisibility?: () => void
@@ -22,59 +25,34 @@ export function ChartPanel({ visible = true, onToggleVisibility }: ChartPanelPro
   const candleHistory = useGameState((state) => state.candleHistory)
   const [historicalDataLoaded, setHistoricalDataLoaded] = useState(false)
 
-  // Load historical data first
+  // Skip historical data loading - use Pyth live feed instead
   useEffect(() => {
+    if (!isInitialized) return
     if (historicalDataLoaded) return
-    if (!isInitialized || !candlestickSeriesRef.current) return
 
-    const loadHistoricalData = async () => {
-      try {
-        console.log("[ChartPanel] Loading historical data...")
-        const { initializeHistoricalData } = await import("@/lib/data/historical-candles")
-
-        // Fetch 15 minutes of historical 1-second candles
-        const historicalCandles = await initializeHistoricalData({
-          durationSeconds: 900, // 15 minutes
-          candleIntervalSeconds: 1,
-        })
-
-        if (historicalCandles.length > 0) {
-          // Convert to chart format
-          const chartData = historicalCandles.map((candle) => ({
-            time: Math.floor(candle.timestamp / 1000) as any,
-            open: candle.open,
-            high: candle.high,
-            low: candle.low,
-            close: candle.close,
-          }))
-
-          chartData.sort((a, b) => a.time - b.time)
-
-          candlestickSeriesRef.current?.setData(chartData)
-          chartRef.current?.timeScale().fitContent()
-
-          console.log(`[ChartPanel] ✅ Loaded ${chartData.length} historical candles`)
-          setHistoricalDataLoaded(true)
-        }
-      } catch (error) {
-        console.warn("[ChartPanel] Failed to load historical data, will use live data:", error)
-        setHistoricalDataLoaded(true) // Mark as loaded anyway to start using live data
-      }
-    }
-
-    loadHistoricalData()
+    // Mark as loaded immediately - we'll build chart from live Pyth feed data
+    console.log("[ChartPanel] Using live Pyth feed data (no historical fetch)")
+    setHistoricalDataLoaded(true)
   }, [isInitialized, historicalDataLoaded])
 
   // Initialize chart
   useEffect(() => {
     if (!chartContainerRef.current) return
     if (chartRef.current) return // Already initialized
+    if (globalChartInstance) {
+      console.log("[ChartPanel] Global chart instance already exists, skipping initialization")
+      return
+    }
 
     console.log("[ChartPanel] Initializing chart...")
 
+    // Track if we're cleaning up to prevent race conditions
+    let isMounted = true
+
     // Dynamically import lightweight-charts to avoid SSR issues
     import("lightweight-charts").then((LightweightCharts) => {
-      if (!chartContainerRef.current) return
+      if (!isMounted || !chartContainerRef.current) return
+      if (chartRef.current || globalChartInstance) return // Double-check after async load
 
       console.log("[ChartPanel] Lightweight charts loaded:", LightweightCharts)
 
@@ -131,9 +109,10 @@ export function ChartPanel({ visible = true, onToggleVisibility }: ChartPanelPro
 
       chartRef.current = chart
       candlestickSeriesRef.current = candlestickSeries
+      globalChartInstance = chart
       setIsInitialized(true)
 
-      console.log("[ChartPanel] Chart initialized")
+      console.log("[ChartPanel] Chart initialized (singleton)")
 
       // Resize handler
       const handleResize = () => {
@@ -149,11 +128,13 @@ export function ChartPanel({ visible = true, onToggleVisibility }: ChartPanelPro
 
       // Cleanup function
       return () => {
+        isMounted = false
         window.removeEventListener("resize", handleResize)
         console.log("[ChartPanel] Cleaning up chart...")
         chart.remove()
         chartRef.current = null
         candlestickSeriesRef.current = null
+        globalChartInstance = null
         setIsInitialized(false)
       }
     }).catch((error) => {
@@ -162,37 +143,56 @@ export function ChartPanel({ visible = true, onToggleVisibility }: ChartPanelPro
 
     // Cleanup if component unmounts before library loads
     return () => {
+      isMounted = false
       if (chartRef.current) {
+        console.log("[ChartPanel] Cleaning up chart (unmount)...")
         chartRef.current.remove()
         chartRef.current = null
         candlestickSeriesRef.current = null
+        globalChartInstance = null
         setIsInitialized(false)
       }
     }
   }, [])
 
-  // Update chart with live data after historical data is loaded
+  // Update chart with live WebSocket data
   useEffect(() => {
     if (!isInitialized || !candlestickSeriesRef.current) return
-    if (!historicalDataLoaded) return // Wait for historical data first
+    if (!historicalDataLoaded) return
     if (candleHistory.length === 0) return
 
     try {
-      // Get the latest candle from live data
-      const latestCandle = candleHistory[candleHistory.length - 1]
+      // Convert all candles to chart format and deduplicate by timestamp
+      const chartData = candleHistory.map((candle) => ({
+        time: Math.floor(candle.timestamp / 1000) as any,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      }))
 
-      const candleData = {
-        time: Math.floor(latestCandle.timestamp / 1000) as any,
-        open: latestCandle.open,
-        high: latestCandle.high,
-        low: latestCandle.low,
-        close: latestCandle.close,
-      }
+      // Sort by time
+      chartData.sort((a, b) => a.time - b.time)
 
-      // Update the chart with the latest candle
-      candlestickSeriesRef.current.update(candleData)
+      // Deduplicate: keep only the last candle for each unique timestamp
+      const deduped = chartData.reduce((acc, candle) => {
+        const existing = acc.find(c => c.time === candle.time)
+        if (existing) {
+          // Replace with newer data (keep last)
+          Object.assign(existing, candle)
+        } else {
+          acc.push(candle)
+        }
+        return acc
+      }, [] as typeof chartData)
 
-      console.log(`[ChartPanel] Updated with live candle at ${new Date(latestCandle.timestamp).toISOString()}`)
+      // Set all data (replaces previous data)
+      candlestickSeriesRef.current.setData(deduped)
+
+      // Auto-fit to show all candles
+      chartRef.current?.timeScale().fitContent()
+
+      console.log(`[ChartPanel] Updated chart with ${deduped.length} candles from Pyth feed (${chartData.length - deduped.length} duplicates removed)`)
     } catch (error) {
       console.error("[ChartPanel] Failed to update chart with live data:", error)
     }
@@ -221,10 +221,10 @@ export function ChartPanel({ visible = true, onToggleVisibility }: ChartPanelPro
   if (!visible) return null
 
   return (
-    <div className="absolute top-4 left-4 right-4 h-[500px] pointer-events-auto z-10">
-      <div className="h-full bg-black/20 backdrop-blur-sm rounded-lg border border-white/10 shadow-2xl">
+    <div className="absolute top-[90px] left-0 right-0 bottom-[170px] px-4 md:px-8 pointer-events-auto z-20">
+      <div className="h-full bg-transparent rounded-b-2xl border-l border-r border-b border-purple-500/30">
         {/* Chart Header */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-black/40">
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-purple-500/30 bg-black/60 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">
               SOL/USD Live Chart
@@ -277,15 +277,13 @@ export function ChartPanel({ visible = true, onToggleVisibility }: ChartPanelPro
 
         {/* Chart Footer - Status */}
         <div className="absolute bottom-2 left-4 text-xs text-muted-foreground">
-          {!historicalDataLoaded ? (
+          {candleHistory.length > 0 ? (
+            <span>{candleHistory.length} candles • Live Pyth Feed</span>
+          ) : (
             <span className="flex items-center gap-2">
               <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-              Loading historical data...
+              Waiting for Pyth feed data...
             </span>
-          ) : candleHistory.length > 0 ? (
-            <span>{candleHistory.length} live candles</span>
-          ) : (
-            <span>Ready for live data...</span>
           )}
         </div>
 

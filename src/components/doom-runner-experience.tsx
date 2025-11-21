@@ -403,6 +403,11 @@ export function DoomRunnerExperience() {
         if (analysisReadyRef.current) {
           const { updateUnrealizedPnl } = useAccountState.getState()
           updateUnrealizedPnl(candle.close, currentStance)
+
+          // For mock mode: sync position to driftPositionSide for lane shifting
+          if (gameMode === "mock") {
+            useGameState.setState({ driftPositionSide: currentStance })
+          }
         }
 
         const nextSignal = buildMultiTimeframeSignal(candleHistoryRef.current)
@@ -560,6 +565,11 @@ export function DoomRunnerExperience() {
       const { lastPrice: currentPrice, updateUnrealizedPnl } = useAccountState.getState()
       if (Number.isFinite(currentPrice ?? NaN)) {
         updateUnrealizedPnl(currentPrice as number, nextStance)
+
+        // For mock mode: sync position to driftPositionSide for lane shifting
+        if (gameMode === "mock") {
+          useGameState.setState({ driftPositionSide: nextStance })
+        }
       }
     }
 
@@ -676,6 +686,7 @@ export function DoomRunnerExperience() {
             solPrice: Math.round((lastPrice ?? 0) * 100), // Convert to cents for display with decimals
             streakGainPct: Math.max(0, streakGainPct), // Clamp to 0+ for display
             suddenLoss,
+            isMockMode: gameMode === "mock",
           },
         },
         window.location.origin,
@@ -737,6 +748,7 @@ export function DoomRunnerExperience() {
     mockStartingBalance,
   ])
 
+  // Real trading: Use multi-timeframe filtering
   useEffect(() => {
     if (gameMode !== "real") return
     if (setupPhase !== "playing") return
@@ -749,10 +761,10 @@ export function DoomRunnerExperience() {
     const mtfConviction = multiTimeframeSignal?.conviction ?? rwConviction
     const conviction = multiTimeframeSignal ? mtfConviction : rwConviction
 
-    console.log(`[DoomRunner] Conviction: MTF=${mtfConviction.toFixed(2)}, RW=${rwConviction.toFixed(2)}, Using=${conviction.toFixed(2)}`)
+    console.log(`[DoomRunner] Real Trading - Conviction: MTF=${mtfConviction.toFixed(2)}, RW=${rwConviction.toFixed(2)}, Using=${conviction.toFixed(2)}`)
 
     tradingController
-      .onStanceChange(hoverStance, lastPrice as number, conviction, unrealizedPnl)
+      .onStanceChange(hoverStance, lastPrice as number, conviction, unrealizedPnl, "real")
       .catch((error) => {
         console.error("[DoomRunner] Failed to sync stance with trading controller:", error)
       })
@@ -765,6 +777,34 @@ export function DoomRunnerExperience() {
     tradingController,
     unrealizedPnl,
     multiTimeframeSignal,
+  ])
+
+  // Mock trading: Directly follow stance without filtering
+  useEffect(() => {
+    if (gameMode !== "mock") return
+    if (setupPhase !== "playing") return
+    if (!latestFeatures) return
+    if (!tradingController.isEnabled()) return
+    if (!Number.isFinite(lastPrice ?? NaN)) return
+
+    // For mock mode, use maximum conviction to execute trades immediately
+    const conviction = 1.0
+
+    console.log(`[DoomRunner] Mock Trading - Direct stance execution: ${hoverStance}`)
+
+    tradingController
+      .onStanceChange(hoverStance, lastPrice as number, conviction, unrealizedPnl, "mock")
+      .catch((error) => {
+        console.error("[DoomRunner] Failed to execute mock trade:", error)
+      })
+  }, [
+    gameMode,
+    hoverStance,
+    latestFeatures,
+    lastPrice,
+    setupPhase,
+    tradingController,
+    unrealizedPnl,
   ])
 
   const toggleChartVisibility = useCallback(() => {

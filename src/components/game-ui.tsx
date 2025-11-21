@@ -5,11 +5,17 @@ import { useGameState, type GameMode, type Stance } from "@/lib/game/game-state"
 import { useAccountState } from "@/lib/game/account-state"
 import type { Features } from "@/lib/data/features"
 import { WalletConnectButton } from "./wallet-connect-button"
-import { getTradingController } from "@/lib/trading/trading-controller"
+import { getTradingController, STRATEGY_PRESETS, type TradingStrategy } from "@/lib/trading/trading-controller"
 import { getDriftPositionManager } from "@/lib/trading/drift-position-manager"
 import type { PositionSummary } from "@/lib/trading/drift-position-manager"
 import { getSessionWallet } from "@/lib/wallet/session-wallet"
 import { toast } from "sonner"
+
+const isTradingStrategyKey = (value: string): value is TradingStrategy =>
+  value === "manual" || value === "aggressive" || value === "balanced" || value === "high_conviction"
+
+const getStrategyLabel = (strategy: string) =>
+  isTradingStrategyKey(strategy) ? STRATEGY_PRESETS[strategy].name : strategy
 
 const stanceLabels: Record<Stance, string> = {
   long: "Long",
@@ -640,10 +646,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
                 <div className="flex items-baseline justify-between mb-2">
                   <div className="text-[10px] text-cyan-300/70 uppercase tracking-widest font-bold">Strategy</div>
                   <div className="text-sm text-cyan-300 font-black uppercase tracking-wide">
-                    {tradingStrategy === "manual" ? "Manual" :
-                     tradingStrategy === "aggressive" ? "Aggressive" :
-                     tradingStrategy === "high_conviction" ? "High Conv." :
-                     "Balanced"}
+                    {getStrategyLabel(tradingStrategy)}
                   </div>
                 </div>
                 <div className="flex items-baseline justify-between">
@@ -1033,7 +1036,7 @@ function DoomRunnerHUD({
   return (
     <div className="pointer-events-none">
       <div className={`absolute top-0 left-0 right-0 z-30 ${paddingClass}`}>
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-purple-500/30 bg-black/60 px-4 py-3 backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-2xl border border-purple-500/30 bg-black/60 px-4 py-3 backdrop-blur">
           {/* Left: Setup button and data source */}
           <div className="flex flex-wrap items-center gap-3 text-xs text-white/80">
             <div className="flex gap-2">
@@ -1086,7 +1089,7 @@ function DoomRunnerHUD({
             <div className="flex flex-col items-end">
               <div className="text-xs uppercase tracking-widest text-white/40">Strategy</div>
               <div className="text-white font-semibold">
-                {tradingStrategy} · {tradingLeverage}x
+                {getStrategyLabel(tradingStrategy)} · {tradingLeverage}x
               </div>
             </div>
             <div className="h-6 w-px bg-white/20" />
@@ -1098,7 +1101,7 @@ function DoomRunnerHUD({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="absolute top-[132px] left-0 right-0 px-8 py-3 z-20 flex flex-wrap items-center gap-3">
           <button
             onClick={onToggleAutoAlign}
             className={`pointer-events-auto rounded-full border px-4 py-1.5 text-xs font-semibold uppercase tracking-widest transition ${

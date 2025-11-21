@@ -41,9 +41,9 @@ A fully functional, semi-transparent chart overlay that displays live SOL/USD ca
 ### Data Flow
 
 ```
-Pyth Oracle (1s candles)
+Pyth Hermes API (SOL/USD feed)
     ↓
-WebSocket Aggregator Service
+PythCandleSource (polls every 400ms, builds 1s candles)
     ↓
 createCandleSource() → useGameState.candleHistory
     ↓

@@ -139,14 +139,15 @@
     if (type === "balance-hud-update") {
       debug("Received balance-hud-update", payload)
       if (moduleInstance && typeof moduleInstance._WebSetBalanceHUD === 'function') {
-        const { equity, balance, solPrice, streakGainPct, suddenLoss } = payload
+        const { equity, balance, solPrice, streakGainPct, suddenLoss, isMockMode } = payload || {}
         debug("Calling WebSetBalanceHUD:", equity, balance, solPrice, streakGainPct, suddenLoss)
         moduleInstance._WebSetBalanceHUD(
           equity || 0,
           balance || 0,
           solPrice || 0,
           streakGainPct || 0,
-          suddenLoss ? 1 : 0
+          suddenLoss ? 1 : 0,
+          isMockMode ? 1 : 0
         )
       }
     }

@@ -5,7 +5,13 @@ import { GameSetupScreen } from "./game-setup-screen"
 import { DoomRunnerExperience } from "./doom-runner-experience"
 import { useGameState, type GameMode, type Stance } from "@/lib/game/game-state"
 import { useAccountState } from "@/lib/game/account-state"
-import { getTradingController } from "@/lib/trading/trading-controller"
+import { getTradingController, STRATEGY_PRESETS, type TradingStrategy } from "@/lib/trading/trading-controller"
+
+const isTradingStrategyKey = (value: string): value is TradingStrategy =>
+  value === "manual" || value === "aggressive" || value === "balanced" || value === "high_conviction"
+
+const getStrategyLabel = (strategy: string) =>
+  isTradingStrategyKey(strategy) ? STRATEGY_PRESETS[strategy].name : strategy
 import { getDriftPositionManager } from "@/lib/trading/drift-position-manager"
 import { getSessionWallet } from "@/lib/wallet/session-wallet"
 
@@ -212,7 +218,7 @@ function MobileTopBar() {
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-white/50">Strategy</p>
           <p className="text-base font-semibold text-white">
-            {tradingStrategy} · {tradingLeverage}x
+            {getStrategyLabel(tradingStrategy)} · {tradingLeverage}x
           </p>
         </div>
         <div className="text-right">
