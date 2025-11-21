@@ -10,6 +10,7 @@ import { createCandleSource } from "@/lib/data/candle-source-factory"
 import { extractFeatures } from "@/lib/data/features"
 import type { CandleSource, Candle } from "@/lib/types"
 import { analyzeMultiTimeframe, signalToStance, logMultiTimeframeAnalysis } from "@/lib/trading/multi-timeframe-analysis"
+import { ChartPanel } from "./dashboard/chart-panel"
 
 const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value))
 const AGGREGATION_WINDOW = 1 // react every second while keeping historical EMA context
@@ -217,6 +218,9 @@ export function DoomRunnerExperience() {
   const [engineReady, setEngineReady] = useState(false)
   const pendingCommandsRef = useRef<string[]>([])
   const tradingController = useMemo(() => getTradingController(), [])
+
+  // Chart visibility state
+  const [chartVisible, setChartVisible] = useState(true)
 
   // Balance HUD streak tracking
   const streakBaselineRef = useRef<number>(equity) // Reset point for streak calculation
@@ -763,9 +767,14 @@ export function DoomRunnerExperience() {
     multiTimeframeSignal,
   ])
 
+  const toggleChartVisibility = useCallback(() => {
+    setChartVisible((prev) => !prev)
+  }, [])
+
   return (
     <div className="relative h-full w-full">
       <GzdoomRunner ref={bridgeRef} onReadyChange={setEngineReady} laneTarget={laneTarget} fireIntent={false} />
+      <ChartPanel visible={chartVisible} onToggleVisibility={toggleChartVisibility} />
     </div>
   )
 }
