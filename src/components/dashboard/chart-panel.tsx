@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useGameState } from "@/lib/game/game-state"
-import type { Candle } from "@/lib/types"
 
 // Import types only at build time
-import type { IChartApi, ISeriesApi } from "lightweight-charts"
+import type { IChartApi, ISeriesApi, Time } from "lightweight-charts"
 
 // Global flag to prevent duplicate chart instances (React Strict Mode workaround)
 let globalChartInstance: IChartApi | null = null
@@ -164,7 +163,7 @@ export function ChartPanel({ visible = true, onToggleVisibility }: ChartPanelPro
     try {
       // Convert all candles to chart format and deduplicate by timestamp
       const chartData = candleHistory.map((candle) => ({
-        time: Math.floor(candle.timestamp / 1000) as any,
+        time: Math.floor(candle.timestamp / 1000) as Time,
         open: candle.open,
         high: candle.high,
         low: candle.low,
