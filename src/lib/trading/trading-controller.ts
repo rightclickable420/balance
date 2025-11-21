@@ -90,7 +90,7 @@ const STRATEGY_PRESETS: Record<TradingStrategy, StrategyPreset> = {
   },
   aggressive: {
     name: "Sicko Mode",
-    description: "Trade clear signals • Good risk/reward • Moderate fees",
+    description: "Maximum chaos • You WILL lose money • Don't use this",
     minConviction: 0.45, // Reduced from 0.60 - allow more trades (was filtering too much)
     minHoldTimeMs: 5000, // Reduced from 8000 - 5 seconds (was too long)
     minProfitToClose: 1.0, // Reduced from 1.5 - take profits sooner
@@ -99,7 +99,7 @@ const STRATEGY_PRESETS: Record<TradingStrategy, StrategyPreset> = {
   },
   balanced: {
     name: "Degen Mode",
-    description: "Filter weak signals • Good risk/reward • Low fees",
+    description: "For true degenerates only • Prepare to get rekt • Seriously don't",
     minConviction: 0.70, // Changed from 0.60 - higher conviction threshold
     minHoldTimeMs: 15000, // Changed from 5000 - 15 seconds minimum hold
     minProfitToClose: 2.0, // Changed from 1.5 - close if profit > 2× fees
@@ -108,7 +108,7 @@ const STRATEGY_PRESETS: Record<TradingStrategy, StrategyPreset> = {
   },
   high_conviction: {
     name: "Midcurve",
-    description: "Only best setups • Very low fees • Needs strong signals",
+    description: "Thinks they're smart • Also loses money • Just use manual",
     minConviction: 0.85, // Changed from 0.75 - only trade very clear signals
     minHoldTimeMs: 30000, // Changed from 9000 - 30 seconds minimum hold
     minProfitToClose: 3.0, // Changed from 2.0 - let winners run (close if profit > 3× fees)
