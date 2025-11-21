@@ -62,6 +62,11 @@ export interface GameState {
   openPositionSize: number // Current position size in USD
   unrealizedPnl: number // Unrealized profit/loss
   realizedPnl: number // Cumulative realized PnL for session
+  driftCollateralUsd: number
+  driftUnrealizedPnlUsd: number
+  driftFreeCollateralUsd: number
+  driftMarginUsage: number
+  driftPositionSide: Stance
   tradingLeverage: number // Configured leverage for real trading
   tradingStrategy: string // Configured strategy for real trading
 
@@ -100,6 +105,15 @@ export interface GameState {
   setPosition: (size: number, unrealizedPnl: number) => void
   addRealizedPnl: (pnl: number) => void
   setTradingConfig: (leverage: number, strategy: string) => void
+  setDriftSummary: (summary: {
+    collateralUsd: number
+    equityUsd: number
+    unrealizedPnlUsd: number
+    freeCollateralUsd: number
+    marginUsage: number
+    openPositionSizeUsd: number
+    positionSide: Stance
+  }) => void
   reset: () => void
 }
 
@@ -145,6 +159,11 @@ export const useGameState = create<GameState>((set) => ({
   openPositionSize: 0,
   unrealizedPnl: 0,
   realizedPnl: 0,
+  driftCollateralUsd: 0,
+  driftUnrealizedPnlUsd: 0,
+  driftFreeCollateralUsd: 0,
+  driftMarginUsage: 0,
+  driftPositionSide: "flat",
   tradingLeverage: 5,
   tradingStrategy: "balanced",
 
@@ -196,12 +215,10 @@ export const useGameState = create<GameState>((set) => ({
   updateCurrentCandle: (candle) =>
     set({ currentCandle: candle }),
   setSessionWallet: (sessionWalletPublicKey, sessionWalletBalance) =>
-    set((state) => ({
+    set({
       sessionWalletPublicKey,
       sessionWalletBalance,
-      // Set starting balance on first wallet connection (when it was previously 0)
-      startingRealBalance: state.startingRealBalance === 0 ? sessionWalletBalance : state.startingRealBalance
-    })),
+    }),
   setEquity: (equity) =>
     set({ equity }),
   setPosition: (openPositionSize, unrealizedPnl) =>
@@ -210,6 +227,31 @@ export const useGameState = create<GameState>((set) => ({
     set((state) => ({ realizedPnl: state.realizedPnl + pnl })),
   setTradingConfig: (tradingLeverage, tradingStrategy) =>
     set({ tradingLeverage, tradingStrategy }),
+  setDriftSummary: (summary) =>
+    set((state) => {
+      let startingRealBalance = state.startingRealBalance
+
+      if (summary.collateralUsd <= 0.0001) {
+        startingRealBalance = 0
+      } else if (state.startingRealBalance === 0) {
+        startingRealBalance = summary.collateralUsd
+      }
+
+      const realizedRaw = summary.collateralUsd - startingRealBalance - summary.unrealizedPnlUsd
+      const realizedPnl = Math.abs(realizedRaw) < 1e-6 ? 0 : realizedRaw
+      return {
+        driftCollateralUsd: summary.collateralUsd,
+        driftUnrealizedPnlUsd: summary.unrealizedPnlUsd,
+        driftFreeCollateralUsd: summary.freeCollateralUsd,
+        driftMarginUsage: summary.marginUsage,
+        equity: summary.equityUsd,
+        openPositionSize: summary.openPositionSizeUsd,
+        unrealizedPnl: summary.unrealizedPnlUsd,
+        realizedPnl,
+        startingRealBalance,
+        driftPositionSide: summary.positionSide,
+      }
+    }),
   reset: () =>
     set({
       setupPhase: "not_started",
@@ -252,5 +294,10 @@ export const useGameState = create<GameState>((set) => ({
       openPositionSize: 0,
       unrealizedPnl: 0,
       realizedPnl: 0,
+      driftCollateralUsd: 0,
+      driftUnrealizedPnlUsd: 0,
+      driftFreeCollateralUsd: 0,
+      driftMarginUsage: 0,
+      driftPositionSide: "flat",
     }),
 }))

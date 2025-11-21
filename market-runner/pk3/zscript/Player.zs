@@ -92,7 +92,15 @@ class MR_Player : DoomPlayer
     if (dmg <= 0)
       return;
     A_SetBlend("#ff4444", 0.6, 8);
-    DamageMobj(self, self, null, dmg, 'None', DMG_NO_ARMOR);
+    // Damage disabled - only show visual feedback
+    // DamageMobj(self, self, null, dmg, 'None', DMG_NO_ARMOR);
+  }
+
+  override int DamageMobj(Actor inflictor, Actor source, int damage, Name mod, int flags, double angle)
+  {
+    // Block ALL damage sources - return 0 to prevent any damage
+    // Still allow visual effects (blood, pain states) but no actual damage
+    return 0;
   }
 
   void HealFlatTick()

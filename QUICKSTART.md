@@ -143,6 +143,7 @@ Create a `.env.local` with any of the following (all optional):
 | `NEXT_PUBLIC_BALANCE_DATA_PROVIDER` | Client hint for choosing the provider (`hyperliquid`, `polygon`, or `mock`). |
 | `NEXT_PUBLIC_BALANCE_SYMBOL` | Client-side default symbol (match the server value). |
 | `NEXT_PUBLIC_BALANCE_USE_LIVE` | Set to `true` to prefer live candles on the client; otherwise the mock source is used. |
+| `NEXT_PUBLIC_REAL_TRADING` | Set to `true` to expose the experimental real-trading setup UI (defaults to disabled). |
 | `POLYGON_API_KEY` | Optional – only needed if you plan to use Polygon’s REST endpoints. |
 | `NEXT_PUBLIC_POLYGON_API_KEY` | Optional – required if you enable the Polygon websocket client. |
 

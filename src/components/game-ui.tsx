@@ -6,6 +6,10 @@ import { useAccountState } from "@/lib/game/account-state"
 import type { Features } from "@/lib/data/features"
 import { WalletConnectButton } from "./wallet-connect-button"
 import { getTradingController } from "@/lib/trading/trading-controller"
+import { getDriftPositionManager } from "@/lib/trading/drift-position-manager"
+import type { PositionSummary } from "@/lib/trading/drift-position-manager"
+import { getSessionWallet } from "@/lib/wallet/session-wallet"
+import { toast } from "sonner"
 
 const stanceLabels: Record<Stance, string> = {
   long: "Long",
@@ -89,16 +93,19 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     openPositionSize,
     unrealizedPnl,
     realizedPnl,
+    equity: stateEquity,
+    driftCollateralUsd = 0,
+    driftPositionSide,
   } = useGameState()
 
   // Additional state selectors
   const currentCandle = useGameState((state) => state.currentCandle)
   const gameMode = useGameState((state) => state.gameMode)
-  const sessionWalletBalance = useGameState((state) => state.sessionWalletBalance)
   const startingRealBalance = useGameState((state) => state.startingRealBalance)
   const mockBalance = useGameState((state) => state.mockBalance)
   const tradingLeverage = useGameState((state) => state.tradingLeverage)
   const tradingStrategy = useGameState((state) => state.tradingStrategy)
+  const hasLivePosition = useGameState((state) => state.openPositionSize > 0.01)
 
   const mockAccountBalance = useAccountState((state) => state.balance)
   const mockEquity = useAccountState((state) => state.equity)
@@ -109,29 +116,46 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
   const isLiquidated = useAccountState((state) => state.isLiquidated)
 
   const [realTradingEnabled, setRealTradingEnabled] = useState(false)
+  const [userDisabledRealTrading, setUserDisabledRealTrading] = useState(false)
+  const [isTradingPaused, setIsTradingPaused] = useState(false)
+  const [isPauseActionPending, setIsPauseActionPending] = useState(false)
   const [tradingMetrics, setTradingMetrics] = useState<ReturnType<typeof tradingController.getMetrics> | null>(null)
+  const [isStoppingReal, setIsStoppingReal] = useState(false)
 
   const tradingController = getTradingController()
 
   // Calculate derived values (before early return)
-  const balance = gameMode === "real" ? sessionWalletBalance : mockAccountBalance
-  const equity = gameMode === "real" ? sessionWalletBalance + unrealizedPnl : mockEquity
+  const balance = gameMode === "real" ? driftCollateralUsd : mockAccountBalance
+  const equity = gameMode === "real" ? stateEquity : mockEquity
   const startingBalance = gameMode === "real" ? startingRealBalance : mockBalance
-  const totalPnl = balance - startingBalance
+  const totalPnl = gameMode === "real" ? equity - startingBalance : balance - startingBalance
+
+  const formatBalanceDisplay = (value: number) =>
+    gameMode === "real" ? `$${value.toFixed(2)}` : `${value.toFixed(3)} SOL`
+  const formatEquityDisplay = formatBalanceDisplay
+  const zeroBalanceLabel = gameMode === "real" ? "$0.00" : "0.000 SOL"
 
   // Auto-enable real trading when in real mode
   useEffect(() => {
     if (setupPhase !== "playing") return // Skip effects during setup
-    if (gameMode === "real" && !realTradingEnabled) {
+    if (gameMode === "real" && !realTradingEnabled && !userDisabledRealTrading) {
       tradingController.enable()
       setRealTradingEnabled(true)
+      setIsTradingPaused(false)
       console.log("[GameUI] Real trading auto-enabled")
-    } else if (gameMode === "mock" && realTradingEnabled) {
+    } else if ((gameMode !== "real" || setupPhase !== "playing") && realTradingEnabled) {
       tradingController.disable()
       setRealTradingEnabled(false)
-      console.log("[GameUI] Real trading auto-disabled (mock mode)")
+      setIsTradingPaused(false)
+      console.log("[GameUI] Real trading auto-disabled (mock mode or reset)")
     }
-  }, [gameMode, realTradingEnabled, tradingController, setupPhase])
+  }, [gameMode, realTradingEnabled, tradingController, setupPhase, userDisabledRealTrading])
+
+  useEffect(() => {
+    if (setupPhase !== "playing") {
+      setUserDisabledRealTrading(false)
+    }
+  }, [setupPhase])
 
   // Update trading metrics every second when real trading is enabled
   useEffect(() => {
@@ -166,13 +190,103 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
     `[GameUI] render - stones: ${stonesPlaced}, phase: ${phase}, canDecide: ${canDecide}, stance: ${hoverStance}, energyPhase: ${energyPhase}`,
   )
 
-  const handleToggleRealTrading = () => {
-    if (realTradingEnabled) {
-      tradingController.disable()
-      setRealTradingEnabled(false)
-    } else {
-      tradingController.enable()
-      setRealTradingEnabled(true)
+  const toggleLiveTrading = async () => {
+    if (gameMode !== "real" || isPauseActionPending) {
+      return
+    }
+    setIsPauseActionPending(true)
+    try {
+      if (!realTradingEnabled) {
+        tradingController.enable()
+        tradingController.resumeTrading()
+        setRealTradingEnabled(true)
+        setIsTradingPaused(false)
+        setUserDisabledRealTrading(false)
+        return
+      }
+
+      if (isTradingPaused) {
+        tradingController.resumeTrading()
+        setIsTradingPaused(false)
+        setUserDisabledRealTrading(false)
+        return
+      }
+
+      await tradingController.pauseTrading()
+      setIsTradingPaused(true)
+      setUserDisabledRealTrading(true)
+    } catch (error) {
+      console.error("[GameUI] Failed to toggle live trading:", error)
+      toast.error("Could not update live execution. Check console for details.")
+    } finally {
+      setIsPauseActionPending(false)
+    }
+  }
+
+  const stopRealTradingRoutine = async (options: { withdrawCollateral?: boolean } = {}) => {
+    tradingController.disable()
+    await tradingController.cleanup()
+
+    const driftManager = getDriftPositionManager()
+    let latestSummary: PositionSummary | null = null
+    if (driftManager.getIsInitialized()) {
+      if (options.withdrawCollateral !== false) {
+        try {
+          await driftManager.withdrawCollateral(0)
+        } catch (error) {
+          console.warn("[GameUI] Drift withdrawal failed during stop:", error)
+          throw error
+        }
+      } else {
+        try {
+          latestSummary = await driftManager.getPositionSummary()
+        } catch (error) {
+          console.warn("[GameUI] Failed to fetch Drift summary while stopping:", error)
+        }
+      }
+      await driftManager.cleanup()
+    }
+
+    const sessionWallet = getSessionWallet()
+    const balance = await sessionWallet.getBalance()
+    await sessionWallet.updateRegistryBalances(
+      options.withdrawCollateral === false && latestSummary
+        ? latestSummary.totalCollateral
+        : 0
+    )
+
+    useGameState.setState({
+      sessionWalletBalance: balance,
+    })
+
+    setRealTradingEnabled(false)
+    setIsTradingPaused(false)
+    setUserDisabledRealTrading(false)
+  }
+
+  const handleBackToSetup = async () => {
+    if (gameMode !== "real") {
+      const { reset } = useGameState.getState()
+      reset()
+      return
+    }
+
+    if (isStoppingReal) return
+
+    setIsStoppingReal(true)
+    try {
+      await stopRealTradingRoutine()
+      await tradingController.ensureAllPositionsClosed("back_to_setup")
+
+      const { reset } = useGameState.getState()
+      reset()
+    } catch (error) {
+      console.error("[GameUI] Failed to stop real trading:", error)
+      toast.error(
+        "Failed to stop real trading safely. Check console logs and recover through the setup screen."
+      )
+    } finally {
+      setIsStoppingReal(false)
     }
   }
 
@@ -216,11 +330,15 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
         autoAlign={autoAlign}
         onToggleAutoAlign={() => setAutoAlign(!autoAlign)}
         realTradingEnabled={realTradingEnabled}
-        onToggleRealTrading={handleToggleRealTrading}
+        onToggleLiveTrading={toggleLiveTrading}
         tradingLeverage={tradingLeverage}
         tradingStrategy={tradingStrategy}
         gameMode={gameMode}
         totalPnl={totalPnl}
+        executedStance={driftPositionSide}
+        hasLivePosition={gameMode === "real" ? hasLivePosition : false}
+        isTradingPaused={isTradingPaused}
+        isPausePending={isPauseActionPending}
       />
     )
   }
@@ -232,23 +350,33 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
       <div className="pointer-events-none">
         {/* Top Bar - Account Info */}
         <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/90 to-transparent backdrop-blur-sm px-4 py-3 z-20">
-          {/* Stop Button - Mobile */}
-          <button
-            onClick={() => {
-              const { reset } = useGameState.getState()
-              reset()
-            }}
-            className="pointer-events-auto mb-3 px-3 py-1.5 bg-gradient-to-r from-rose-600/90 to-rose-500/90 hover:from-rose-500 hover:to-rose-400 rounded-lg border border-rose-400/30 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-rose-500/20 transition-all duration-200 active:scale-95"
-          >
-            ← Setup
-          </button>
+          <div className="flex gap-2 mb-3">
+            {gameMode === "real" && (
+              <button
+                onClick={() => void toggleLiveTrading()}
+                disabled={isPauseActionPending}
+                className="pointer-events-auto flex-1 px-3 py-1.5 bg-gradient-to-r from-amber-600/90 to-amber-500/90 hover:from-amber-500 hover:to-amber-400 rounded-lg border border-amber-400/30 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isTradingPaused ? "Resume Trading" : "Stop Trading"}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                const { reset } = useGameState.getState()
+                reset()
+              }}
+              className="pointer-events-auto flex-1 px-3 py-1.5 bg-gradient-to-r from-rose-600/90 to-rose-500/90 hover:from-rose-500 hover:to-rose-400 rounded-lg border border-rose-400/30 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-rose-500/20 transition-all duration-200 active:scale-95"
+            >
+              ← Setup
+            </button>
+          </div>
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex flex-col">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Balance</div>
                 <div className="text-2xl font-black text-white tabular-nums leading-none mt-0.5">
-                  {balance.toFixed(3)} SOL
+                  {formatBalanceDisplay(balance)}
                 </div>
               </div>
               <div className="h-10 w-px bg-white/20" />
@@ -260,7 +388,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
                   equity < balance * 0.5 ? 'text-amber-400' :
                   'text-white'
                 }`}>
-                  {equity.toFixed(3)} SOL
+                  {formatEquityDisplay(equity)}
                 </div>
               </div>
             </div>
@@ -414,7 +542,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
                 LIQUIDATED
               </div>
               <div className="text-base text-rose-400 uppercase tracking-wider">
-                Account Balance: 0.000 SOL
+                Account Balance: {zeroBalanceLabel}
               </div>
             </div>
           </div>
@@ -433,7 +561,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
           <div className="flex flex-col">
             <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Balance</div>
             <div className="text-3xl font-black text-white tabular-nums tracking-tight leading-none mt-0.5">
-              {balance.toFixed(3)} SOL
+              {formatBalanceDisplay(balance)}
             </div>
           </div>
 
@@ -447,7 +575,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
               equity < balance * 0.5 ? 'text-amber-400' :
               'text-white'
             }`}>
-              {equity.toFixed(3)} SOL
+              {formatEquityDisplay(equity)}
             </div>
           </div>
         </div>
@@ -494,13 +622,15 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
         <div className="bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] p-5 hover:border-white/20 transition-all duration-300">
           {/* Stop Button */}
           <button
-            onClick={() => {
-              const { reset } = useGameState.getState()
-              reset()
-            }}
-            className="pointer-events-auto w-full mb-4 px-4 py-2.5 bg-gradient-to-r from-rose-600/90 to-rose-500/90 hover:from-rose-500 hover:to-rose-400 rounded-xl border border-rose-400/30 text-white font-bold text-sm uppercase tracking-wider shadow-lg shadow-rose-500/20 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+            onClick={handleBackToSetup}
+            disabled={isStoppingReal}
+            className={`pointer-events-auto w-full mb-4 px-4 py-2.5 rounded-xl border border-rose-400/30 text-white font-bold text-sm uppercase tracking-wider shadow-lg shadow-rose-500/20 transition-all duration-200 ${
+              isStoppingReal
+                ? "bg-gray-700 cursor-not-allowed"
+                : "bg-gradient-to-r from-rose-600/90 to-rose-500/90 hover:from-rose-500 hover:to-rose-400 hover:scale-[1.02] active:scale-[0.98]"
+            }`}
           >
-            ← Back to Setup
+            {gameMode === "real" ? (isStoppingReal ? "Stopping..." : "Stop Real Trading") : "← Back to Setup"}
           </button>
 
           {/* Trading Configuration Display */}
@@ -640,14 +770,17 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="text-xs text-muted-foreground uppercase tracking-widest font-bold">Real Trading</div>
-              <div className={`text-[10px] font-bold ${realTradingEnabled ? 'text-rose-400' : 'text-gray-500'}`}>
-                {realTradingEnabled ? 'LIVE' : 'OFF'}
+              <div className={`text-[10px] font-bold ${
+                !realTradingEnabled ? 'text-gray-500' : isTradingPaused ? 'text-amber-400' : 'text-rose-400'
+              }`}>
+                {!realTradingEnabled ? 'OFF' : isTradingPaused ? 'PAUSED' : 'LIVE'}
               </div>
             </div>
             <button
-              onClick={handleToggleRealTrading}
-              className={`pointer-events-auto relative w-14 h-7 rounded-full transition-colors ${
-                realTradingEnabled ? 'bg-rose-500' : 'bg-gray-600'
+              onClick={() => void toggleLiveTrading()}
+              disabled={isPauseActionPending}
+              className={`pointer-events-auto relative w-14 h-7 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                !realTradingEnabled ? 'bg-gray-600' : isTradingPaused ? 'bg-amber-500' : 'bg-rose-500'
               }`}
             >
               <div
@@ -704,12 +837,36 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
                     </div>
                     <div className="flex flex-col">
                       <span className="text-muted-foreground uppercase tracking-wider">Fees</span>
-                      <span className="text-rose-400 font-bold tabular-nums">${tradingMetrics.estimatedFees.toFixed(2)}</span>
+                      <span className="text-rose-400 font-bold tabular-nums">${tradingMetrics.totalFees.toFixed(2)}</span>
                     </div>
                   </div>
-                  <div className="mt-2 text-[9px] text-gray-500">
-                    Volume: ${tradingMetrics.totalVolume.toFixed(0)} •
-                    Saved: {tradingMetrics.filteredTrades > 0 ? ` ${((tradingMetrics.filteredTrades / (tradingMetrics.totalTrades + tradingMetrics.filteredTrades)) * 100).toFixed(0)}%` : ' 0%'}
+                  <div className="grid grid-cols-3 gap-2 text-[10px] mt-2">
+                    <div className="flex flex-col">
+                      <span className="text-muted-foreground uppercase tracking-wider">Win Rate</span>
+                      <span className="text-emerald-300 font-bold tabular-nums">
+                        {(tradingMetrics.winRate * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-muted-foreground uppercase tracking-wider">Avg Win</span>
+                      <span className="text-emerald-200 font-bold tabular-nums">
+                        +${tradingMetrics.avgWinSize.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-muted-foreground uppercase tracking-wider">Avg Loss</span>
+                      <span className="text-rose-300 font-bold tabular-nums">
+                        -${tradingMetrics.avgLossSize.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[9px] text-gray-500 space-y-0.5">
+                    <div>
+                      Volume: ${tradingMetrics.totalVolume.toFixed(0)} • Avg Hold: {(tradingMetrics.avgHoldTime / 1000).toFixed(1)}s
+                    </div>
+                    <div>
+                      Fee savings: ${tradingMetrics.feeSavings.toFixed(2)}
+                    </div>
                   </div>
                 </div>
               )}
@@ -718,7 +875,15 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
                 <div className="text-[9px] text-rose-200 uppercase font-bold">
                   ⚠️ Live Drift Protocol trades
                 </div>
+                <p className="text-[10px] text-rose-100/80">
+                  Auto-align will place real orders on Drift using your session wallet. Keep this tab open and monitor volatility.
+                </p>
               </div>
+              {isStoppingReal && (
+                <div className="mt-2 text-xs text-rose-200">
+                  Stopping real trading… closing positions and withdrawing funds.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -787,7 +952,7 @@ export function GameUI({ isMobile = false }: GameUIProps = {}) {
               LIQUIDATED
             </div>
             <div className="text-2xl text-rose-400 uppercase tracking-wider">
-              Account Balance: 0.000 SOL
+              Account Balance: {zeroBalanceLabel}
             </div>
             <div className="text-lg text-muted-foreground">
               Your position was closed due to insufficient equity
@@ -813,11 +978,15 @@ interface DoomRunnerHudProps {
   autoAlign: boolean
   onToggleAutoAlign: () => void
   realTradingEnabled: boolean
-  onToggleRealTrading: () => void
+  onToggleLiveTrading: () => void
   tradingLeverage: number
   tradingStrategy: string
   gameMode: GameMode
   totalPnl: number
+  executedStance: Stance
+  hasLivePosition: boolean
+  isTradingPaused: boolean
+  isPausePending: boolean
 }
 
 function DoomRunnerHUD({
@@ -829,14 +998,32 @@ function DoomRunnerHUD({
   autoAlign,
   onToggleAutoAlign,
   realTradingEnabled,
-  onToggleRealTrading,
+  onToggleLiveTrading,
   tradingLeverage,
   tradingStrategy,
   gameMode,
   totalPnl,
+  executedStance,
+  hasLivePosition,
+  isTradingPaused,
+  isPausePending,
 }: DoomRunnerHudProps) {
   const stanceColor = stanceAccent[hoverStance]
   const paddingClass = isMobile ? "px-4 py-4" : "px-8 py-6"
+  const formatCurrency = (value: number) =>
+    gameMode === "real" ? `$${value.toFixed(2)}` : `${value.toFixed(3)} SOL`
+  const formatPnl = (value: number) => {
+    const magnitude = Math.abs(value)
+    const prefix = value >= 0 ? "+" : "-"
+    return gameMode === "real"
+      ? `${prefix}$${magnitude.toFixed(2)}`
+      : `${prefix}${magnitude.toFixed(3)} SOL`
+  }
+  const liveExecutionStatus = !realTradingEnabled
+    ? "Inactive"
+    : isTradingPaused
+      ? "Paused"
+      : "Enabled"
 
   const handleReset = () => {
     const { reset } = useGameState.getState()
@@ -849,12 +1036,23 @@ function DoomRunnerHUD({
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-purple-500/30 bg-black/60 px-4 py-3 backdrop-blur">
           {/* Left: Setup button and data source */}
           <div className="flex flex-wrap items-center gap-3 text-xs text-white/80">
-            <button
-              onClick={handleReset}
-              className="pointer-events-auto rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1 text-rose-100 transition hover:bg-rose-500/20"
-            >
-              ← Setup
-            </button>
+            <div className="flex gap-2">
+              {gameMode === "real" && (
+                <button
+                  onClick={() => void onToggleLiveTrading()}
+                  disabled={isPausePending}
+                  className="pointer-events-auto rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-amber-100 transition hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isTradingPaused ? "Resume Trading" : "Stop Trading"}
+                </button>
+              )}
+              <button
+                onClick={handleReset}
+                className="pointer-events-auto rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1 text-rose-100 transition hover:bg-rose-500/20"
+              >
+                ← Setup
+              </button>
+            </div>
             <span className="rounded-full border border-white/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.4em] text-white/60">
               {providerDisplay}
             </span>
@@ -864,6 +1062,23 @@ function DoomRunnerHUD({
           <div className="flex flex-col items-center">
             <div className="text-xs uppercase tracking-widest text-white/40">Stance</div>
             <div className={`text-lg font-bold ${stanceColor}`}>{stanceLabels[hoverStance]}</div>
+            {gameMode === "real" && (
+              <div
+                className={`text-[11px] font-semibold ${
+                  hasLivePosition
+                    ? executedStance === hoverStance
+                      ? "text-emerald-300"
+                      : "text-rose-300"
+                    : "text-white/40"
+                }`}
+              >
+                {hasLivePosition
+                  ? executedStance === hoverStance
+                    ? "LIVE FILLED"
+                    : `Live: ${stanceLabels[executedStance]}`
+                  : "Flat"}
+              </div>
+            )}
           </div>
 
           {/* Right: Strategy, Balance, Equity, PnL */}
@@ -875,10 +1090,10 @@ function DoomRunnerHUD({
               </div>
             </div>
             <div className="h-6 w-px bg-white/20" />
-            <span>Balance <strong className="text-white">${balance.toFixed(2)}</strong></span>
-            <span>Equity <strong className="text-white">${equity.toFixed(2)}</strong></span>
+            <span>Balance <strong className="text-white">{formatCurrency(balance)}</strong></span>
+            <span>Equity <strong className="text-white">{formatCurrency(equity)}</strong></span>
             <span>PnL <strong className={totalPnl >= 0 ? "text-emerald-300" : "text-rose-300"}>
-              {totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}
+              {formatPnl(totalPnl)}
             </strong></span>
           </div>
         </div>
@@ -897,14 +1112,17 @@ function DoomRunnerHUD({
 
           {gameMode === "real" && (
             <button
-              onClick={onToggleRealTrading}
-              className={`pointer-events-auto rounded-full border px-4 py-1.5 text-xs font-semibold uppercase tracking-widest transition ${
-                realTradingEnabled
-                  ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
-                  : "border-white/20 bg-white/5 text-white/60"
+              onClick={() => void onToggleLiveTrading()}
+              disabled={isPausePending}
+              className={`pointer-events-auto rounded-full border px-4 py-1.5 text-xs font-semibold uppercase tracking-widest transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                !realTradingEnabled
+                  ? "border-white/10 bg-white/5 text-white/50"
+                  : isTradingPaused
+                    ? "border-amber-400/40 bg-amber-500/10 text-amber-200"
+                    : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
               }`}
             >
-              Live Execution · {realTradingEnabled ? "Enabled" : "Standby"}
+              Live Execution · {liveExecutionStatus}
             </button>
           )}
         </div>

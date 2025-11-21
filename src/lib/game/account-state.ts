@@ -41,6 +41,7 @@ interface AccountState {
   registerCandle: (candle: Candle, stance: Stance) => number
   updateUnrealizedPnl: (currentPrice: number, stance: Stance) => void
   applyLossPenalty: (loseCount: number, severity: number) => number
+  syncWithRealAccount: (balanceUsd: number, equityUsd: number, unrealizedUsd: number) => void
   reset: () => void
 }
 
@@ -299,6 +300,14 @@ export const useAccountState = create<AccountState>((set, get) => ({
 
     return penalty
   },
+
+  syncWithRealAccount: (balanceUsd, equityUsd, unrealizedUsd) =>
+    set((state) => ({
+      balance: balanceUsd,
+      equity: equityUsd,
+      unrealizedPnl: unrealizedUsd,
+      peakEquity: Math.max(equityUsd, state.peakEquity),
+    })),
 
   reset: () =>
     set({

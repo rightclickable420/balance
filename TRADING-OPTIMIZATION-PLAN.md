@@ -319,6 +319,12 @@ private async updatePosition(newSide: "long" | "short", newSize: number): Promis
 
 **Expected Impact:** Another **10-20% improvement**
 
+### Progress (2025-11-17)
+- ✅ **Regime filter:** `trading-controller` now samples the latest 10+ candles via `detectMarketRegime()` and blocks new real-trading orders while auto-flattening existing positions whenever the market is classified as `choppy`.
+- ✅ **Single-transaction rebalancing:** stance changes reuse one Drift order by netting exposure deltas in `rebalancePosition`, so LONG→SHORT flips no longer submit separate close/open transactions and collateral checks only apply to the incremental size.
+- ✅ **PnL parity with Drift:** `setDriftSummary` derives realized PnL from Drift collateral + unrealized values, keeping the HUD in sync with on-chain balances without relying on manual `addRealizedPnl` bookkeeping.
+- ✅ **Slippage optimization:** `getExecutionProfile` now maps conviction/flip urgency to tighter slippage bands (20-55 bps) and longer Swift auctions (up to 10 s), and `drift-position-manager.openPosition` accepts variable auction durations to wait for better fills when latency allows.
+
 ---
 
 ## Expected Results
@@ -371,6 +377,8 @@ interface TradingMetrics {
 ```
 
 Display in UI for tuning and monitoring.
+
+✅ Implemented 2025-11-17: `TradingController` now records hold times, win/loss counts, average win/loss size, fee savings (based on avoided trades), and total fees. `GameUI` surfaces these stats in the strategy panel so mock testing and live drills can validate fee reduction assumptions in real time.
 
 ---
 

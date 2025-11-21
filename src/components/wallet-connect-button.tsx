@@ -5,7 +5,7 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui"
 import { useEffect, useState } from "react"
 import { getSessionWallet, type PositionBackup } from "@/lib/wallet/session-wallet"
 import { useGameState } from "@/lib/game/game-state"
-import { LAMPORTS_PER_SOL, SystemProgram, Transaction } from "@solana/web3.js"
+import { LAMPORTS_PER_SOL } from "@solana/web3.js"
 import { useConnection } from "@solana/wallet-adapter-react"
 import { getDriftPositionManager } from "@/lib/trading/drift-position-manager"
 
@@ -187,66 +187,6 @@ export function WalletConnectButton() {
     return () => clearInterval(interval)
   }, [sessionActive, sessionWalletPublicKey])
 
-  const handleWithdraw = async () => {
-    if (!publicKey || !sessionWalletPublicKey) return
-
-    const sessionWallet = getSessionWallet()
-    const keypair = sessionWallet.getKeypair()
-    if (!keypair) return
-
-    try {
-      // Get session wallet balance
-      const balance = await sessionWallet.getBalance()
-      if (balance === 0) {
-        console.log("[WalletConnect] No balance to withdraw")
-        return
-      }
-
-      // Keep small amount for rent
-      const rentExempt = 0.001
-      const withdrawAmount = Math.max(0, balance - rentExempt)
-
-      if (withdrawAmount <= 0) {
-        console.log("[WalletConnect] Balance too low to withdraw")
-        return
-      }
-
-      // Create transfer transaction from session wallet → user wallet
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: sessionWalletPublicKey,
-          toPubkey: publicKey,
-          lamports: withdrawAmount * LAMPORTS_PER_SOL,
-        })
-      )
-
-      // Get recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash()
-      transaction.recentBlockhash = blockhash
-      transaction.feePayer = sessionWalletPublicKey
-
-      // Sign with session keypair
-      transaction.sign(keypair)
-
-      // Send transaction
-      const signature = await connection.sendRawTransaction(transaction.serialize())
-      console.log("[WalletConnect] Withdraw transaction sent:", signature)
-
-      await connection.confirmTransaction(signature, "confirmed")
-      console.log("[WalletConnect] Withdraw confirmed:", signature)
-
-      // Clear session
-      sessionWallet.clearSession()
-      setSessionActive(false)
-      useGameState.setState({
-        sessionWalletPublicKey: null,
-        sessionWalletBalance: 0,
-        equity: 0,
-      })
-    } catch (error) {
-      console.error("[WalletConnect] Withdraw failed:", error)
-    }
-  }
 
   // Prevent hydration mismatch - return loading skeleton if not mounted
   if (!mounted) {
@@ -282,15 +222,6 @@ export function WalletConnectButton() {
               </div>
             </div>
           )}
-
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={handleWithdraw}
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs"
-            >
-              Withdraw
-            </button>
-          </div>
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import "./globals.css"
 import { SolanaWalletProvider } from "../src/components/wallet-provider"
+import { Toaster } from "sonner"
 
 export const metadata: Metadata = {
   title: "Balance — DEMO",
@@ -21,6 +22,7 @@ export default function RootLayout({
         <SolanaWalletProvider>
           {children}
         </SolanaWalletProvider>
+        <Toaster richColors position="top-center" expand />
       </body>
     </html>
   )

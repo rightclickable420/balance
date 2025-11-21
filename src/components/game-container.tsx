@@ -20,7 +20,8 @@ export function GameContainer({ isMobile = false }: GameContainerProps) {
   const handleStartGame = useCallback(async (
     mode: GameMode,
     strategy?: import("@/lib/trading/trading-controller").TradingStrategy,
-    leverage?: number
+    leverage?: number,
+    options?: { resumeExistingCollateral?: boolean }
   ) => {
     console.log(`[Game] Starting game in ${mode} mode`, { strategy, leverage })
 
@@ -59,7 +60,9 @@ export function GameContainer({ isMobile = false }: GameContainerProps) {
 
         const driftManager = getDriftPositionManager()
         console.log("[Game] Initializing Drift Protocol...")
-        await driftManager.initialize(keypair)
+        await driftManager.initialize(keypair, {
+          skipDeposit: options?.resumeExistingCollateral,
+        })
         console.log("[Game] ✅ Drift Protocol initialized")
       } catch (error) {
         console.error("[Game] Failed to initialize Drift:", error)

@@ -80,7 +80,9 @@ class MR_Director : Actor
 
   int VolleyDamage()
   {
-    return MRUtils.ClampInt(int((0.5 * Sigma + 0.5 * LossMag) * 40.0), 1, 40);
+    // Damage disabled - return 0 to prevent enemy damage
+    return 0;
+    // Original formula: return MRUtils.ClampInt(int((0.5 * Sigma + 0.5 * LossMag) * 40.0), 1, 40);
   }
 
   EAlignState ChooseBit()

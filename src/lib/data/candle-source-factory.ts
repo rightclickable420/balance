@@ -19,7 +19,7 @@ const getProvider = () => {
     return "pyth"
   }
 
-  return "mock"
+  return "pyth"
 }
 
 const LIVE_ENABLED = typeof process !== "undefined" && process.env.NEXT_PUBLIC_BALANCE_USE_LIVE === "true"

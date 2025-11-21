@@ -186,6 +186,22 @@ class SessionRegistryManager {
   }
 
   /**
+   * Remove session from registry entirely
+   */
+  removeSession(sessionPublicKey: string): void {
+    const index = this.registry.records.findIndex((r) => r.sessionPublicKey === sessionPublicKey)
+    if (index === -1) {
+      console.warn("[SessionRegistry] Cannot remove session: not found", sessionPublicKey)
+      return
+    }
+
+    this.registry.records.splice(index, 1)
+    this.saveRegistry()
+
+    console.log("[SessionRegistry] Removed session:", sessionPublicKey.slice(0, 8) + "...")
+  }
+
+  /**
    * Update last accessed timestamp
    */
   updateLastAccessed(sessionPublicKey: string): void {
